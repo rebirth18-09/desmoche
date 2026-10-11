@@ -1,0 +1,71 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Presentation/LoadingScreen.cs" id="1_script"]
+[ext_resource type="Theme" path="res://Assets/UI/MenuTheme.tres" id="2_theme"]
+
+[sub_resource type="SystemFont" id="Font_title"]
+font_names = PackedStringArray("Georgia", "Liberation Serif", "Noto Serif")
+
+[node name="Carga" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Content" type="VBoxContainer" parent="Center"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="TitleLabel" type="Label" parent="Center/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.81, 0.5, 1)
+theme_override_fonts/font = SubResource("Font_title")
+theme_override_font_sizes/font_size = 52
+text = "DESMOCHE"
+horizontal_alignment = 1
+
+[node name="SuitsLabel" type="Label" parent="Center/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.63, 0.61, 0.4, 1)
+theme_override_font_sizes/font_size = 24
+text = "♠   ♥   ♦   ♣"
+horizontal_alignment = 1
+
+[node name="ProgressBar" type="ProgressBar" parent="Center/Content"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+show_percentage = false
+
+[node name="StatusLabel" type="Label" parent="Center/Content"]
+layout_mode = 2
+text = "Preparando el juego…"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="ErrorButtons" type="HBoxContainer" parent="Center/Content"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="RetryButton" type="Button" parent="Center/Content/ErrorButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Reintentar"
+
+[node name="QuitButton" type="Button" parent="Center/Content/ErrorButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Salir"

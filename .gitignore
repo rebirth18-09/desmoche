@@ -1,0 +1,23 @@
+# Godot/editor caches
+.godot/
+.vs/
+# .NET generated files
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+# Local exports and credentials
+/exports/
+/builds/
+/android/
+/desmoche/android/
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.mobileprovision
+# Local logs
+*.log

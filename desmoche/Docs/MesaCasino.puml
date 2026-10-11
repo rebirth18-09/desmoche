@@ -1,0 +1,92 @@
+@startuml
+title Mesa casino — presentación y autoridad existente
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+package "Servidor existente" {
+  class GameManager
+  class RulesValidator
+  class ServerSession
+  GameManager --> RulesValidator : valida reglas
+  ServerSession --> GameManager : ejecuta acción autorizada
+}
+package "Networking existente" {
+  class NetworkManager {
+    ViewChanged
+    ConnectionChanged
+    ActionCompleted
+    Submit(...)
+  }
+  class SnapshotDto {
+    OwnHand
+    Players.CardCount
+    Melds
+    DeckCount
+    DiscardCount
+    Phase
+    CurrentPlayerId
+    PaymentPlayerId
+  }
+  ServerSession --> SnapshotDto : vista por destinatario
+  NetworkManager --> ServerSession : intención con identidad y contexto
+  NetworkManager --> SnapshotDto : recibe vista autorizada
+}
+package "Presentación" {
+  class Mesa {
+    DisplaySnapshot(...)
+    Bind(NetworkManager)
+  }
+  class "Mesa.Casino.cs" as Casino {
+    escala uniforme 2016×780
+    filas independientes
+    retratos y materiales
+    pie accesible
+  }
+  class "Mesa.Interaction.cs" as Input {
+    selección y borradores
+    orden local
+    solicitudes
+  }
+  class Carta {
+    SelectionRequested(cardId)
+    SetVisualSize(...)
+    cara / dorso / vacío
+    Drag & Drop nativo
+  }
+  class CartaArtwork
+  class HandInteractionState
+  class InteractionActions
+  class CardDropZone
+  class "Assets/Casino" as Assets
+  Mesa o-- Casino : misma clase parcial
+  Mesa o-- Input : misma clase parcial
+  Mesa --> Carta : instancia desde DTO
+  Mesa --> SnapshotDto : solo lee
+  Mesa --> NetworkManager : enlaces existentes
+  Input --> HandInteractionState : cambios locales
+  Input --> InteractionActions : prepara intención
+  Input --> CardDropZone : destino visual
+  Input --> NetworkManager : solicita acción
+  Carta --> CartaArtwork : dibuja identidad permitida
+  Casino --> Assets
+  CartaArtwork --> Assets
+}
+package "Diagnóstico aislado" {
+  class CasinoVisualSmoke {
+    3 estados × 3 resoluciones
+    arrastre nativo en modo gráfico
+    privacidad y geometría
+    captura del viewport
+  }
+  CasinoVisualSmoke --> Mesa : snapshots de demostración
+  CasinoVisualSmoke --> RulesValidator : valida ejemplos
+}
+note right of SnapshotDto
+Solo mano propia y cartas públicas.
+No incorpora manos privadas rivales
+ni orden del mazo para dibujar Mesa.
+end note
+note bottom of CasinoVisualSmoke
+Tres rivales con diez cartas es una prueba de espacio.
+No se instala en GameManager ni crea partida real.
+end note
+@enduml

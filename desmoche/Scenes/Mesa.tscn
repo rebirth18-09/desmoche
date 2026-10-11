@@ -1,0 +1,626 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Presentation/Mesa.cs" id="1_mesa"]
+[ext_resource type="PackedScene" path="res://Scenes/Carta.tscn" id="2_card"]
+[ext_resource type="Texture2D" path="res://Assets/Casino/CasinoTable.png" id="3_table"]
+[ext_resource type="Script" path="res://Scripts/Presentation/CardDropZone.cs" id="6_drop"]
+
+[sub_resource type="StyleBoxEmpty" id="Style_empty"]
+
+[sub_resource type="StyleBoxFlat" id="Style_button"]
+bg_color = Color(0.027, 0.068, 0.077, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.53, 0.41, 0.21, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_left = 8
+corner_radius_bottom_right = 8
+content_margin_left = 14.0
+content_margin_right = 14.0
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+
+[sub_resource type="Theme" id="Theme_mesa"]
+default_font_size = 16
+Label/colors/font_color = Color(0.96, 0.95, 0.9, 1)
+Button/styles/normal = SubResource("Style_button")
+
+[node name="Mesa" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = SubResource("Theme_mesa")
+script = ExtResource("1_mesa")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.018, 0.024, 0.022, 1)
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+follow_focus = false
+
+[node name="Padding" type="Control" parent="Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 1
+
+[node name="Content" type="Control" parent="Scroll/Padding"]
+layout_mode = 0
+offset_right = 2016.0
+offset_bottom = 780.0
+mouse_filter = 1
+
+[node name="Material" type="TextureRect" parent="Scroll/Padding/Content"]
+layout_mode = 0
+texture_filter = 4
+offset_right = 2016.0
+offset_bottom = 780.0
+mouse_filter = 2
+texture = ExtResource("3_table")
+expand_mode = 1
+stretch_mode = 0
+
+[node name="TopBar" type="HBoxContainer" parent="Scroll/Padding/Content"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 802.0
+offset_right = 2016.0
+offset_bottom = 838.0
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="Scroll/Padding/Content/TopBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.94, 0.82, 0.53, 1)
+text = "DESMOCHE"
+
+[node name="LeaveButton" type="Button" parent="Scroll/Padding/Content/TopBar"]
+layout_mode = 2
+custom_minimum_size = Vector2(120, 32)
+theme_override_font_sizes/font_size = 14
+text = "Salir de sala"
+
+[node name="Header" type="VBoxContainer" parent="Scroll/Padding/Content"]
+layout_mode = 0
+offset_left = 360.0
+offset_top = 842.0
+offset_right = 1810.0
+offset_bottom = 914.0
+theme_override_constants/separation = 2
+mouse_filter = 2
+
+[node name="ConnectionLabel" type="Label" parent="Scroll/Padding/Content/Header"]
+layout_mode = 2
+visible = true
+mouse_filter = 2
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.64, 0.71, 0.7, 1)
+text = "Esperando estado del servidor."
+autowrap_mode = 3
+
+[node name="PhaseLabel" type="Label" parent="Scroll/Padding/Content/Header"]
+layout_mode = 2
+visible = true
+mouse_filter = 2
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.83, 0.83, 0.75, 1)
+text = "Sin partida sincronizada"
+autowrap_mode = 3
+
+[node name="TurnLabel" type="Label" parent="Scroll/Padding/Content/Header"]
+layout_mode = 2
+visible = true
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(1, 0.82, 0.4, 1)
+text = "Sin turno"
+autowrap_mode = 3
+
+[node name="ResultLabel" type="Label" parent="Scroll/Padding/Content/Header"]
+layout_mode = 2
+visible = false
+mouse_filter = 2
+theme_override_font_sizes/font_size = 19
+theme_override_colors/font_color = Color(1, 0.82, 0.4, 1)
+text = ""
+autowrap_mode = 3
+
+[node name="ResponseLabel" type="Label" parent="Scroll/Padding/Content/Header"]
+layout_mode = 2
+visible = false
+mouse_filter = 2
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.83, 0.83, 0.75, 1)
+text = ""
+autowrap_mode = 3
+
+[node name="PlayerZone" type="Control" parent="Scroll/Padding/Content"]
+layout_mode = 0
+offset_left = 58.0
+offset_top = 12.0
+offset_right = 1958.0
+offset_bottom = 108.0
+mouse_filter = 2
+
+[node name="Padding" type="Control" parent="Scroll/Padding/Content/PlayerZone"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 1900.0
+offset_bottom = 96.0
+mouse_filter = 2
+
+[node name="Players" type="HFlowContainer" parent="Scroll/Padding/Content/PlayerZone/Padding"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 1900.0
+offset_bottom = 96.0
+alignment = 1
+theme_override_constants/h_separation = 32
+theme_override_constants/v_separation = 0
+mouse_filter = 2
+
+[node name="Table" type="Control" parent="Scroll/Padding/Content"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 112.0
+offset_right = 2016.0
+offset_bottom = 620.0
+mouse_filter = 2
+
+[node name="Padding" type="Control" parent="Scroll/Padding/Content/Table"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 2016.0
+offset_bottom = 508.0
+mouse_filter = 2
+
+[node name="Surface" type="Control" parent="Scroll/Padding/Content/Table/Padding"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 2016.0
+offset_bottom = 508.0
+mouse_filter = 2
+
+[node name="OpponentGames" type="HFlowContainer" parent="Scroll/Padding/Content/Table/Padding/Surface"]
+layout_mode = 0
+offset_left = 144.0
+offset_top = 22.0
+offset_right = 1872.0
+offset_bottom = 162.0
+alignment = 1
+theme_override_constants/h_separation = 42
+theme_override_constants/v_separation = 0
+mouse_filter = 2
+
+[node name="Center" type="HBoxContainer" parent="Scroll/Padding/Content/Table/Padding/Surface"]
+layout_mode = 0
+offset_left = 780.0
+offset_top = 170.0
+offset_right = 1236.0
+offset_bottom = 354.0
+alignment = 1
+theme_override_constants/separation = 48
+mouse_filter = 1
+
+[node name="Mazo" type="VBoxContainer" parent="Scroll/Padding/Content/Table/Padding/Surface/Center"]
+layout_mode = 2
+custom_minimum_size = Vector2(106, 0)
+theme_override_constants/separation = 6
+
+[node name="Content" type="VBoxContainer" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Mazo"]
+layout_mode = 2
+mouse_filter = 1
+theme_override_constants/separation = 6
+
+[node name="TitleLabel" type="Label" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Mazo/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 26
+text = "Mazo"
+horizontal_alignment = 1
+
+[node name="Carta" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Mazo/Content" instance=ExtResource("2_card")]
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="CountLabel" type="Label" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Mazo/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+text = "0 cartas"
+horizontal_alignment = 1
+
+[node name="Pozo" type="PanelContainer" parent="Scroll/Padding/Content/Table/Padding/Surface/Center"]
+layout_mode = 2
+custom_minimum_size = Vector2(106, 0)
+theme_override_styles/panel = SubResource("Style_empty")
+script = ExtResource("6_drop")
+
+[node name="Content" type="VBoxContainer" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Pozo"]
+layout_mode = 2
+mouse_filter = 1
+theme_override_constants/separation = 6
+
+[node name="TitleLabel" type="Label" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Pozo/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 26
+text = "Pozo"
+horizontal_alignment = 1
+
+[node name="Carta" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Pozo/Content" instance=ExtResource("2_card")]
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="CountLabel" type="Label" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Pozo/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+text = "0 cartas"
+horizontal_alignment = 1
+
+[node name="Oferta" type="VBoxContainer" parent="Scroll/Padding/Content/Table/Padding/Surface/Center"]
+layout_mode = 2
+custom_minimum_size = Vector2(146, 0)
+visible = false
+theme_override_constants/separation = 6
+
+[node name="Content" type="VBoxContainer" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Oferta"]
+layout_mode = 2
+mouse_filter = 1
+theme_override_constants/separation = 6
+
+[node name="TitleLabel" type="Label" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Oferta/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 26
+text = "Carta ofrecida"
+horizontal_alignment = 1
+
+[node name="Carta" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Oferta/Content" instance=ExtResource("2_card")]
+layout_mode = 2
+size_flags_horizontal = 4
+
+[node name="CountLabel" type="Label" parent="Scroll/Padding/Content/Table/Padding/Surface/Center/Oferta/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+text = "Visible para todos"
+horizontal_alignment = 1
+
+[node name="MyGame" type="Control" parent="Scroll/Padding/Content/Table/Padding/Surface"]
+layout_mode = 0
+offset_left = 448.0
+offset_top = 369.0
+offset_right = 1568.0
+offset_bottom = 508.0
+mouse_filter = 2
+
+[node name="TitleLabel" type="Label" parent="Scroll/Padding/Content/Table/Padding/Surface/MyGame"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 1120.0
+offset_bottom = 30.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 26
+text = "Mi juego"
+horizontal_alignment = 1
+
+[node name="LineLeft" type="ColorRect" parent="Scroll/Padding/Content/Table/Padding/Surface/MyGame"]
+layout_mode = 0
+offset_left = 360.0
+offset_top = 15.0
+offset_right = 460.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.7, 0.52, 0.23, 1)
+
+[node name="LineRight" type="ColorRect" parent="Scroll/Padding/Content/Table/Padding/Surface/MyGame"]
+layout_mode = 0
+offset_left = 660.0
+offset_top = 15.0
+offset_right = 760.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.7, 0.52, 0.23, 1)
+
+[node name="EmptyLabel" type="Label" parent="Scroll/Padding/Content/Table/Padding/Surface/MyGame"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 42.0
+offset_right = 1120.0
+offset_bottom = 74.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.52, 0.7, 0.62, 1)
+text = "Todavía no has publicado juegos."
+horizontal_alignment = 1
+
+[node name="Rows" type="Control" parent="Scroll/Padding/Content/Table/Padding/Surface/MyGame"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 34.0
+offset_right = 1120.0
+offset_bottom = 134.0
+mouse_filter = 1
+
+[node name="HandZone" type="Control" parent="Scroll/Padding/Content"]
+layout_mode = 0
+offset_left = 130.0
+offset_top = 640.0
+offset_right = 1886.0
+offset_bottom = 780.0
+mouse_filter = 2
+
+[node name="Padding" type="Control" parent="Scroll/Padding/Content/HandZone"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 1756.0
+offset_bottom = 140.0
+mouse_filter = 2
+
+[node name="Content" type="Control" parent="Scroll/Padding/Content/HandZone/Padding"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 1756.0
+offset_bottom = 140.0
+mouse_filter = 1
+
+[node name="HandHeader" type="Control" parent="Scroll/Padding/Content/HandZone/Padding/Content"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 1756.0
+offset_bottom = 140.0
+mouse_filter = 2
+
+[node name="SelfPlayers" type="HFlowContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content/HandHeader"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 156.0
+offset_right = 330.0
+offset_bottom = 232.0
+theme_override_constants/h_separation = 0
+mouse_filter = 2
+
+[node name="TitleLabel" type="Label" parent="Scroll/Padding/Content/HandZone/Padding/Content/HandHeader"]
+layout_mode = 0
+offset_left = 220.0
+offset_top = 38.0
+offset_right = 470.0
+offset_bottom = 78.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 24
+text = "Mis cartas · 0 cartas"
+horizontal_alignment = 1
+
+[node name="Cards" type="HFlowContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content"]
+layout_mode = 0
+offset_left = 230.0
+offset_top = 2.0
+offset_right = 1526.0
+offset_bottom = 134.0
+mouse_filter = 1
+alignment = 1
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 0
+
+[node name="EmptyLabel" type="Label" parent="Scroll/Padding/Content/HandZone/Padding/Content"]
+layout_mode = 0
+offset_left = 230.0
+offset_top = 48.0
+offset_right = 1526.0
+offset_bottom = 84.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 20
+text = "Esperando reparto."
+horizontal_alignment = 1
+
+[node name="Interaction" type="VBoxContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content"]
+layout_mode = 0
+mouse_filter = 1
+theme_override_constants/separation = 8
+
+[node name="HintLabel" type="Label" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction"]
+layout_mode = 2
+mouse_filter = 2
+text = "Selecciona varias cartas con click. Arrastra para ordenar. Prepara los juegos aqui y revisa el orden antes de enviarlos."
+autowrap_mode = 3
+theme_override_font_sizes/font_size = 13
+
+[node name="SelectionLabel" type="Label" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction"]
+layout_mode = 2
+mouse_filter = 2
+text = "0 cartas seleccionadas · 0 borradores"
+theme_override_font_sizes/font_size = 13
+
+[node name="LocalActions" type="HFlowContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction"]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+
+[node name="TargetGame" type="OptionButton" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/LocalActions"]
+layout_mode = 2
+disabled = true
+
+[node name="PrepareButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/LocalActions"]
+layout_mode = 2
+disabled = true
+text = "Preparar combinacion"
+
+[node name="ClearSelectionButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/LocalActions"]
+layout_mode = 2
+disabled = true
+text = "Limpiar seleccion"
+
+[node name="ClearDraftsButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/LocalActions"]
+layout_mode = 2
+disabled = true
+text = "Limpiar borradores"
+
+[node name="LeftButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/LocalActions"]
+layout_mode = 2
+disabled = true
+text = "Mover izquierda"
+
+[node name="RightButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/LocalActions"]
+layout_mode = 2
+disabled = true
+text = "Mover derecha"
+
+[node name="ExternalSelect" type="CheckButton" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/LocalActions"]
+layout_mode = 2
+disabled = true
+text = "Incluir carta publica"
+
+[node name="DraftZone" type="PanelContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 75)
+theme_override_styles/panel = SubResource("Style_button")
+script = ExtResource("6_drop")
+
+[node name="Content" type="VBoxContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/DraftZone"]
+layout_mode = 2
+mouse_filter = 1
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/DraftZone/Content"]
+layout_mode = 2
+mouse_filter = 2
+text = "Combinaciones preparadas · Pendientes de validacion"
+theme_override_font_sizes/font_size = 14
+autowrap_mode = 3
+
+[node name="EmptyLabel" type="Label" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/DraftZone/Content"]
+layout_mode = 2
+mouse_filter = 2
+text = "Suelta aqui una carta de la seleccion para preparar el juego. Las cartas siguen en tu mano. Reordena el borrador arrastrando sus cartas."
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 3
+
+[node name="Rows" type="VBoxContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/DraftZone/Content"]
+layout_mode = 2
+mouse_filter = 1
+theme_override_constants/separation = 10
+
+[node name="NetworkActions" type="HFlowContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction"]
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+
+[node name="ExchangeButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Entregar seleccionada a la derecha"
+
+[node name="ContinueButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Continuar sin victoria inicial"
+
+[node name="DrawDeckButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Mostrar carta del mazo"
+
+[node name="PassButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "No reclamar"
+
+[node name="PublishButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Publicar borradores"
+
+[node name="ClaimButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Reclamar oferta"
+
+[node name="DrawDiscardButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Tomar pozo"
+
+[node name="DesmocheButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Declarar desmoche"
+
+[node name="PayButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Pagar seleccionada"
+
+[node name="NoPaymentButton" type="Button" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Completar sin pago"
+
+[node name="DeclareWin" type="CheckButton" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/NetworkActions"]
+layout_mode = 2
+visible = false
+disabled = true
+text = "Declarar victoria al tomar"
+
+[node name="MessageLabel" type="Label" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction"]
+layout_mode = 2
+mouse_filter = 2
+text = ""
+autowrap_mode = 3
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(1, 0.82, 0.4, 1)
+
+[node name="RevealedZone" type="VBoxContainer" parent="Scroll/Padding/Content"]
+layout_mode = 0
+visible = false
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="Scroll/Padding/Content/RevealedZone"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Manos reveladas al finalizar"
+autowrap_mode = 3
+
+[node name="Rows" type="VBoxContainer" parent="Scroll/Padding/Content/RevealedZone"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+
+

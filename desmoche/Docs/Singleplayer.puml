@@ -1,0 +1,55 @@
+@startuml
+title Desmoche — Mesa compartida y Singleplayer local
+skinparam classAttributeIconSize 0
+package Presentación {
+  class Main
+  class StartupMenu
+  class SingleplayerSetup
+  class Mesa
+  interface IGameSession
+  Main --> StartupMenu
+  Main --> SingleplayerSetup : opciones
+  Main --> Mesa : vincula sesión
+  Mesa --> IGameSession : vista y solicitudes
+}
+package Adaptadores {
+  class NetworkManager
+  class LocalGameSession
+  IGameSession <|.. NetworkManager
+  IGameSession <|.. LocalGameSession
+  LocalGameSession : cola de intenciones
+  LocalGameSession : respuesta en _Process
+}
+package "Núcleo C# puro" {
+  class LocalMatchController
+  class LocalMatchOptions
+  class BotBrain
+  class BotAction
+  class ServerSession
+  class GameManager
+  class RulesValidator
+  class SnapshotDto
+  LocalGameSession --> LocalMatchController
+  LocalMatchController --> LocalMatchOptions
+  LocalMatchController *-- "1..3" BotBrain
+  LocalMatchController *-- ServerSession : autoridad local
+  BotBrain --> SnapshotDto : solo su vista privada
+  BotBrain --> BotAction : intención
+  BotAction --> ServerSession : validada
+  ServerSession --> GameManager
+  GameManager --> RulesValidator
+  ServerSession --> SnapshotDto : por destinatario
+}
+NetworkManager --> ServerSession : autoridad del host LAN
+note right of LocalMatchController
+  Sin ENet, sockets ni RPC.
+  La Mesa recibe únicamente la vista humana.
+  Los bots no reciben el orden del mazo
+  ni las manos privadas rivales.
+end note
+note right of BotBrain
+  Fácil / Medio / Difícil / Experto
+  Estrategia acotada y memoria pública.
+  Las reglas siempre son las mismas.
+end note
+@enduml

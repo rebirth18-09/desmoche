@@ -1,0 +1,51 @@
+@startuml
+title Fase 6 - Publico replicado y mano privada
+package Host {
+  [ServerSession] as S
+  [GameManager\nGameState privado] as G
+  [StateProjection] as P
+  [NetworkManager] as H
+  [StateSpawner\nauthority=1] as SP
+  [PublicState\nsolo PublicJson] as PUB
+  [StateSynchronizer\nOnChange, visibility=false] as SY
+}
+package Cliente {
+  [PublicState remoto] as RP
+  [NetworkManager cliente] as C
+  [ClientStateAssembler] as A
+  [SnapshotDto coherente] as V
+}
+S --> G : comandos validados
+S --> P : vista autorizada
+P --> H : privado del destinatario
+P --> PUB : PublicSnapshotDto
+H --> SP : spawn publico
+SP --> PUB : crea una replica
+PUB --> SY
+SY --> RP : autoridad 1\nsolo peers admitidos
+H --> C : RpcId: PrivateSnapshotDto
+RP --> A : parte publica
+C --> A : parte privada
+A --> V : misma sesion y revision
+note bottom of G
+No replicar mazo ordenado, semilla,
+manos ajenas ni reclamos pendientes.
+end note
+@enduml
+
+@startuml
+title Coherencia entre dos transportes
+participant Servidor as S
+participant "Synchronizer / replica" as R
+participant "RPC privado" as P
+participant ClientStateAssembler as A
+participant Presentacion as UI
+S -> R : publico revision 21
+S -> P : mano revision 21
+P -> A : privado 21
+note right of A : conserva vista 20
+R -> A : publico 21
+A -> UI : vista completa 21
+S -> P : ActionReply revision 21
+P -> UI : entregar solo con View.Revision >= 21
+@enduml

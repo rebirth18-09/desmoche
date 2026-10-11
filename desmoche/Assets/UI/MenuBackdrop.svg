@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <radialGradient id="felt"><stop stop-color="#154c37"/><stop offset=".62" stop-color="#0b2920"/><stop offset="1" stop-color="#040f0c"/></radialGradient>
+    <linearGradient id="gold"><stop stop-color="#594522"/><stop offset=".5" stop-color="#ba9450"/><stop offset="1" stop-color="#594522"/></linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#felt)"/>
+  <g fill="none" stroke="url(#gold)" opacity=".28">
+    <rect x="26" y="26" width="1548" height="948" rx="32"/>
+    <path d="M70 145V70h75M1455 70h75v75M70 855v75h75M1455 930h75v-75" stroke-width="2"/>
+    <path d="M800 62l16 12-16 12-16-12zm0 852l16 12-16 12-16-12z"/>
+  </g>
+  <g fill="#112a20" stroke="#b99b58" stroke-width="2" opacity=".14">
+    <rect x="-62" y="440" width="240" height="340" rx="22" transform="rotate(-22 80 600)"/>
+    <rect x="35" y="472" width="240" height="340" rx="22" transform="rotate(-10 80 600)"/>
+    <rect x="1410" y="180" width="240" height="340" rx="22" transform="rotate(22 1540 340)"/>
+    <rect x="1310" y="210" width="240" height="340" rx="22" transform="rotate(10 1540 340)"/>
+  </g>
+</svg>

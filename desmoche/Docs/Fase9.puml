@@ -1,0 +1,149 @@
+@startuml
+title Fase 9 — Gestos locales y acciones autoritativas
+skinparam classAttributeIconSize 0
+
+package "Presentacion Godot" {
+  class Carta <<PanelContainer>> {
+    +FaceCardId : int?
+    +Interactive : bool
+    +Selected : bool
+    +SelectionRequested(cardId)
+    +_GuiInput(event)
+    +_GetDragData(position) : Variant
+    +_CanDropData(position, data) : bool
+    +_DropData(position, data)
+  }
+  class CardDropZone <<PanelContainer>> {
+    +DropAllowed
+    +DropReceived
+  }
+  class CardDragData <<local>> {
+    +Create(view, id, origin, group)
+    +TryRead(data, currentView)
+  }
+  class Mesa <<Control, partial>> {
+    +Bind(network)
+    +DisplaySnapshot(view, status)
+    -RequestAction(kind)
+    -SendRequest(request)
+    -OnActionCompleted(reply)
+  }
+}
+package "Estado de presentacion sin Godot" {
+  class HandInteractionState {
+    +Order
+    +SelectedIds
+    +Groups
+    +Synchronize(view)
+    +Move(id, beforeIndex)
+    +PrepareGroup(targetMeldId)
+    +BuildPlays()
+  }
+  class VisualGroupDraft {
+    +MeldId : int?
+    +Cards : IReadOnlyList<int>
+  }
+  class InteractionActions {
+    +CanRequest(view, kind)
+    +TryCreate(view, hand, kind, declareWin)
+  }
+  class VisualActionRequest {
+    +Kind
+    +CardId
+    +Plays
+    +DeclareWin
+  }
+}
+package "Networking existente" {
+  class NetworkManager {
+    +View : SnapshotDto
+    +Submit(kind, cardId, plays, declareWin)
+    +ViewChanged
+    +ActionCompleted
+  }
+  class ServerSession <<server>>
+  class SnapshotDto <<destinatario>> {
+    +OwnHand
+    +Melds : publicos
+    +DeckCount
+    +DiscardTop
+    +OfferedCard
+    +Window
+    +Revision
+  }
+}
+package "Nucleo existente, autoritativo" {
+  class GameManager
+  class RulesValidator
+  class GameState
+  class "Desmoche.Domain.Card" as DomainCard <<immutable>>
+}
+Mesa *-- HandInteractionState
+HandInteractionState *-- VisualGroupDraft
+Mesa --> Carta : señales / callbacks
+Mesa --> CardDropZone : destinos
+Carta --> CardDragData : token local via Mesa
+Carta ..> DomainCard : solo lectura para dibujar
+Mesa --> InteractionActions : prepara intencion
+InteractionActions --> VisualActionRequest
+Mesa --> NetworkManager : Submit
+NetworkManager --> ServerSession : RPC o cola host
+ServerSession --> GameManager : remitente real y accion
+GameManager --> RulesValidator
+GameManager *-- GameState
+GameState o-- DomainCard
+ServerSession --> SnapshotDto : proyeccion autorizada
+NetworkManager --> SnapshotDto : ensamble publico + privado
+Mesa ..> SnapshotDto : representar / reconciliar
+note right of HandInteractionState
+  Orden, seleccion y borradores locales.
+  No ejecuta reglas ni modifica GameState.
+end note
+note bottom of NetworkManager
+  Peer 1 conserva la autoridad.
+  Manos rivales y orden del mazo no llegan a Mesa.
+  El Dictionary del drag no viaja por RPC.
+end note
+@enduml
+
+@startuml
+title Publicar, reclamar o pagar desde una interaccion visual
+actor Jugador
+participant Carta
+participant Mesa
+participant HandInteractionState as Local
+participant InteractionActions as Policy
+participant NetworkManager as Network
+participant ServerSession as Server
+participant GameManager as Engine
+participant RulesValidator as Rules
+
+Jugador -> Carta : click / teclado / arrastrar
+Carta -> Mesa : señal o callback local
+alt ordenar, seleccionar o preparar
+  Mesa -> Local : actualizar datos de presentacion
+  Mesa -> Carta : pintar orden / seleccion / borrador
+else enviar una jugada
+  Mesa -> Policy : verificar disponibilidad y forma visible
+  Policy --> Mesa : VisualActionRequest o mensaje
+  Mesa -> Network : Submit(kind, cardId, plays, declareWin)
+  Mesa -> Mesa : bloquear mientras espera
+  Network -> Server : comando con sesion/ventana/request
+  Server -> Server : identidad del remitente, permisos y pertenencia
+  Server -> Engine : accion autorizada a evaluar
+  Engine -> Rules : combinaciones / victoria
+  Rules --> Engine : resultado determinista
+  Engine --> Server : estado resultante o rechazo
+  Server -> Network : publico + privado solo destinatario
+  Network -> Mesa : ViewChanged (vista coherente)
+  Mesa -> Local : reconciliar / cancelar intencion obsoleta
+  Mesa -> Carta : representar el estado del servidor
+  Server -> Network : Reply correlacionado
+  Network -> Mesa : ActionCompleted tras revision necesaria
+  Mesa -> Mesa : mostrar respuesta / desbloquear
+end
+note over Mesa, Server
+  El gesto no retira cartas autoritativas.
+  Soltar fuera o rechazar una accion no modifica la partida localmente.
+end note
+@enduml

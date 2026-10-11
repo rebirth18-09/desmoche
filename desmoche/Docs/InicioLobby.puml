@@ -1,0 +1,65 @@
+@startuml
+title Desmoche — carga, inicio y lobby
+skinparam backgroundColor #F7F7F2
+skinparam componentStyle rectangle
+
+package "Presentación local" {
+  component "Main\nraíz persistente" as Main
+  component "LoadingScreen\nCarga.tscn" as Carga
+  component "StartupMenu\nMenuPrincipal.tscn" as Menu
+  component "Lobby\nLobby.tscn" as Lobby
+  component "Mesa\nMesa.tscn" as Mesa
+  component "Tema compartido\nMenuTheme.tres" as Theme
+}
+
+package "Networking existente" {
+  component "NetworkManager\n/root/Main/NetworkManager" as Network
+  component "ENetMultiplayerPeer" as ENet
+}
+
+package "Servidor" {
+  component "ServerSession" as Session
+  component "GameManager" as Game
+  component "Estado verdadero\nmanos, mazo, turnos" as State
+}
+
+Main *-- Network : una sola instancia
+Main --> Carga : inicio / recursos
+Main --> Menu : recursos disponibles
+Menu --> Lobby : Multijugador
+Lobby --> Menu : volver desconectado
+Menu --> Main : Salir / cerrar aplicación
+Menu ..> Theme
+Lobby ..> Theme
+Carga ..> Theme
+Lobby --> Network : Host / Join / Close\nSubmit(StartMatch)
+Network --> ENet : conexión y transporte
+Network --> Session : validar solicitudes en host
+Session --> Game : acciones autorizadas
+Game --> State : única fuente de verdad
+Network --> Main : ConnectionChanged\nViewChanged
+Network --> Lobby : estado y jugadores públicos
+Main --> Mesa : partida iniciada
+Network --> Mesa : vista autorizada del destinatario
+Mesa --> Lobby : desconexión mediante Main
+
+note right of Menu
+DESMOCHE / Jugar
+Multijugador
+Singleplayer deshabilitado
+Salir
+end note
+
+note bottom of Lobby
+Crear: nombre
+Buscar: nombre + IP del host
+2–4 jugadores, UDP 7000
+Sin descubrimiento automático
+end note
+
+note bottom of State
+Sin cambios de reglas ni RPC.
+No se envían al cliente manos privadas rivales
+ni el orden del mazo.
+end note
+@enduml

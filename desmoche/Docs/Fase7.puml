@@ -1,0 +1,90 @@
+@startuml
+title Fase 7 — Lobby y transición con conexión persistente
+skinparam classAttributeIconSize 0
+
+package "Presentación local" {
+  class Main <<Control>> {
+    UpdateScreen()
+  }
+  class Lobby <<Control>> {
+    CreateRoom()
+    JoinRoom()
+    StartMatch()
+    LeaveRoom()
+  }
+  class Mesa <<Control>> {
+    Render()
+    LeaveRoom()
+  }
+}
+package "Networking existente" {
+  class NetworkManager <<Node>> {
+    State
+    View : SnapshotDto
+    Host()
+    Join()
+    Submit()
+    Close()
+  }
+  class PublicMatchReplica <<Node>>
+  class MultiplayerSpawner
+  class MultiplayerSynchronizer
+}
+package "Host — autoridad" {
+  class ServerSession
+  class GameManager
+  class GameState
+}
+class SnapshotDto <<Vista por destinatario>>
+
+Main *-- Lobby
+Main *-- Mesa
+Main *-- NetworkManager : ruta permanente
+Lobby --> NetworkManager : solicitudes / eventos
+Mesa --> NetworkManager : vista / salida
+NetworkManager --> SnapshotDto : vista coherente
+NetworkManager *-- ServerSession : solo host
+ServerSession *-- GameManager
+GameManager --> GameState
+NetworkManager *-- MultiplayerSpawner
+MultiplayerSpawner --> PublicMatchReplica : spawn público
+PublicMatchReplica *-- MultiplayerSynchronizer
+
+note right of Main
+/root/Main/NetworkManager
+se conserva entre Lobby y Mesa.
+Transición por vista confirmada.
+end note
+
+note right of SnapshotDto
+Mano propia privada.
+Manos ajenas no se envían
+salvo revelación autorizada al ganar.
+end note
+@enduml
+
+@startuml
+title Solicitud de inicio y transición
+actor Host
+participant "Lobby host" as LH
+participant "NetworkManager host" as NH
+participant ServerSession as S
+participant GameManager as G
+participant "NetworkManager cliente" as NC
+participant "Main host/cliente" as M
+Host -> LH : Iniciar partida
+LH -> NH : Submit(StartMatch)
+LH -> LH : bloquear solicitud duplicada
+NH -> S : Receive(peer=1, comando)
+S -> S : identidad / sesión / ventana / host / estado
+S -> G : StartMatch()
+G -> G : repartir nueve; InitialExchange
+S --> NH : estado validado
+NH -> NH : proyectar público + privado
+NH -> NC : público sincronizado + RPC privado
+NC -> NC : ensamblar misma sesión/revisión
+NH -> M : ViewChanged(InitialExchange)
+NC -> M : ViewChanged(InitialExchange)
+M -> M : Lobby.Visible=false\nMesa.Visible=true
+note over NH, NC : NetworkManager sigue vivo; mismo protocolo y ruta
+@enduml

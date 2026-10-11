@@ -1,0 +1,98 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Presentation/StartupMenu.cs" id="1_script"]
+[ext_resource type="Theme" path="res://Assets/UI/MenuTheme.tres" id="2_theme"]
+
+[sub_resource type="SystemFont" id="Font_title"]
+font_names = PackedStringArray("Georgia", "Liberation Serif", "Noto Serif")
+
+[sub_resource type="StyleBoxFlat" id="Style_primary"]
+bg_color = Color(0.78, 0.59, 0.24, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+content_margin_left = 20.0
+content_margin_top = 12.0
+content_margin_right = 20.0
+content_margin_bottom = 12.0
+
+[node name="MenuPrincipal" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+follow_focus = true
+
+[node name="Center" type="CenterContainer" parent="Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Content" type="VBoxContainer" parent="Scroll/Center"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="SuitsLabel" type="Label" parent="Scroll/Center/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.76, 0.64, 0.4, 1)
+theme_override_font_sizes/font_size = 26
+text = "♠   ♥   ♦   ♣"
+horizontal_alignment = 1
+
+[node name="TitleLabel" type="Label" parent="Scroll/Center/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.81, 0.5, 1)
+theme_override_fonts/font = SubResource("Font_title")
+theme_override_font_sizes/font_size = 58
+text = "DESMOCHE"
+horizontal_alignment = 1
+
+[node name="PlayLabel" type="Label" parent="Scroll/Center/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "Jugar"
+horizontal_alignment = 1
+
+[node name="Buttons" type="VBoxContainer" parent="Scroll/Center/Content"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="MultiplayerButton" type="Button" parent="Scroll/Center/Content/Buttons"]
+custom_minimum_size = Vector2(0, 58)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.08, 0.11, 0.06, 1)
+theme_override_styles/normal = SubResource("Style_primary")
+text = "Multijugador"
+
+[node name="SingleplayerButton" type="Button" parent="Scroll/Center/Content/Buttons"]
+custom_minimum_size = Vector2(0, 54)
+layout_mode = 2
+tooltip_text = "Juega en este dispositivo contra 1 a 3 bots."
+text = "Singleplayer"
+
+[node name="QuitButton" type="Button" parent="Scroll/Center/Content/Buttons"]
+custom_minimum_size = Vector2(0, 54)
+layout_mode = 2
+text = "Salir"
+
+[node name="FooterLabel" type="Label" parent="Scroll/Center/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.56, 0.7, 0.6, 1)
+theme_override_font_sizes/font_size = 16
+text = "2–4 jugadores · Contra bots o en LAN / Wi-Fi"
+horizontal_alignment = 1

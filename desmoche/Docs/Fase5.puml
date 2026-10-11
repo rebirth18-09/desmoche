@@ -1,0 +1,56 @@
+@startuml
+title Desmoche - Fase 5: autoridad y vistas privadas
+skinparam componentStyle rectangle
+package "Proceso host (peer 1)" {
+  [Presentacion host] as HUI
+  [NetworkManager\nENet servidor] as HN
+  [ServerSession\nregistro peer -> jugador] as S
+  [GameManager\nmaquina de estados] as G
+  [GameState\nmanos y mazo privados] as GS
+  [RulesValidator] as R
+}
+package "Proceso cliente" {
+  [Presentacion cliente] as CUI
+  [NetworkManager\nENet cliente] as CN
+  [SnapshotDto\nmano propia + estado publico] as V
+}
+HUI --> HN : Submit
+HN --> S : misma validacion para host
+CN --> HN : Hello / RequestAction
+HN --> CN : Admission / ReceiveView / ActionReply\nRpcId destinatario
+S --> G : accion del jugador vinculado al peer
+G --> GS
+G --> R
+S --> HN : vista individual
+CN --> V
+V --> CUI
+CUI --> CN : Submit
+note bottom of GS
+Nunca serializar GameState ni Player.
+El orden del mazo y las manos ajenas
+no salen del servidor durante la partida.
+end note
+@enduml
+
+@startuml
+title Una solicitud remota
+actor Jugador
+participant "Cliente NetworkManager" as C
+participant "Host NetworkManager" as N
+participant ServerSession as S
+participant GameManager as G
+Jugador -> C : Submit(accion, datos)
+C -> N : RequestAction(JSON)
+N -> N : capturar GetRemoteSenderId()
+N -> S : Receive(peer, JSON, reloj)
+S -> S : identidad, cuota, estructura,\nsesion, solicitud, ventana
+S -> G : validar y aplicar accion
+G --> S : resultado y estado
+S -> G : ResolveClaims si todos respondieron
+S --> N : ReplyDto
+N -> S : ViewFor(cada peer)
+S --> N : snapshot individual
+N -> C : ReceiveView(vista privada)
+N -> C : ActionReply(resultado)
+C -> Jugador : actualizar presentacion
+@enduml

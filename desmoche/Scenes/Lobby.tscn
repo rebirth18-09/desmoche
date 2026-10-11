@@ -1,0 +1,225 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Presentation/Lobby.cs" id="1_script"]
+[ext_resource type="Theme" path="res://Assets/UI/MenuTheme.tres" id="2_theme"]
+
+[node name="Lobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+follow_focus = true
+
+[node name="Center" type="CenterContainer" parent="Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Panel" type="PanelContainer" parent="Scroll/Center"]
+custom_minimum_size = Vector2(540, 0)
+layout_mode = 2
+
+[node name="Padding" type="MarginContainer" parent="Scroll/Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="Content" type="VBoxContainer" parent="Scroll/Center/Panel/Padding"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 34
+text = "Multijugador"
+horizontal_alignment = 1
+
+[node name="SubtitleLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+text = "LAN / Wi-Fi · 2 a 4 jugadores"
+horizontal_alignment = 1
+
+[node name="OptionsPanel" type="VBoxContainer" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="CreateOption" type="Button" parent="Scroll/Center/Panel/Padding/Content/OptionsPanel"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "Crear partida"
+
+[node name="JoinOption" type="Button" parent="Scroll/Center/Panel/Padding/Content/OptionsPanel"]
+custom_minimum_size = Vector2(0, 56)
+layout_mode = 2
+text = "Buscar sala"
+
+[node name="BackButton" type="Button" parent="Scroll/Center/Panel/Padding/Content/OptionsPanel"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "Volver al inicio"
+
+[node name="CreatePanel" type="VBoxContainer" parent="Scroll/Center/Panel/Padding/Content"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/CreatePanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Crear partida"
+
+[node name="HintLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/CreatePanel"]
+layout_mode = 2
+text = "Serás el host. Comparte tu IP local para que los demás se unan."
+autowrap_mode = 3
+
+[node name="NameLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/CreatePanel"]
+layout_mode = 2
+text = "Tu nombre"
+
+[node name="NameInput" type="LineEdit" parent="Scroll/Center/Panel/Padding/Content/CreatePanel"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+placeholder_text = "Escribe tu nombre"
+max_length = 24
+
+[node name="RoomInfoLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/CreatePanel"]
+layout_mode = 2
+text = "2 a 4 jugadores · Misma red local · Puerto UDP 7000"
+autowrap_mode = 3
+theme_override_font_sizes/font_size = 15
+
+[node name="Buttons" type="VBoxContainer" parent="Scroll/Center/Panel/Padding/Content/CreatePanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="CreateButton" type="Button" parent="Scroll/Center/Panel/Padding/Content/CreatePanel/Buttons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "Crear partida"
+
+[node name="CancelButton" type="Button" parent="Scroll/Center/Panel/Padding/Content/CreatePanel/Buttons"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "Volver"
+
+[node name="JoinPanel" type="VBoxContainer" parent="Scroll/Center/Panel/Padding/Content"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/JoinPanel"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Buscar sala"
+
+[node name="HintLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/JoinPanel"]
+layout_mode = 2
+text = "Pide la IP local al host e introdúcela para unirte a su sala."
+autowrap_mode = 3
+
+[node name="NameLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/JoinPanel"]
+layout_mode = 2
+text = "Tu nombre"
+
+[node name="NameInput" type="LineEdit" parent="Scroll/Center/Panel/Padding/Content/JoinPanel"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+placeholder_text = "Escribe tu nombre"
+max_length = 24
+
+[node name="IPLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/JoinPanel"]
+layout_mode = 2
+text = "IP del host"
+
+[node name="IPInput" type="LineEdit" parent="Scroll/Center/Panel/Padding/Content/JoinPanel"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+placeholder_text = "Ejemplo: 192.168.1.50"
+max_length = 64
+
+[node name="Buttons" type="VBoxContainer" parent="Scroll/Center/Panel/Padding/Content/JoinPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="JoinButton" type="Button" parent="Scroll/Center/Panel/Padding/Content/JoinPanel/Buttons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "Conectar"
+
+[node name="CancelButton" type="Button" parent="Scroll/Center/Panel/Padding/Content/JoinPanel/Buttons"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "Volver"
+
+[node name="SessionPanel" type="VBoxContainer" parent="Scroll/Center/Panel/Padding/Content"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="StatusLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/SessionPanel"]
+layout_mode = 2
+text = "Sin conexión."
+autowrap_mode = 3
+
+[node name="AddressLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/SessionPanel"]
+layout_mode = 2
+autowrap_mode = 3
+theme_override_font_sizes/font_size = 16
+
+[node name="PlayersTitle" type="Label" parent="Scroll/Center/Panel/Padding/Content/SessionPanel"]
+layout_mode = 2
+text = "Jugadores (0/4)"
+
+[node name="PlayersList" type="ItemList" parent="Scroll/Center/Panel/Padding/Content/SessionPanel"]
+custom_minimum_size = Vector2(0, 144)
+layout_mode = 2
+focus_mode = 0
+
+[node name="WaitingLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content/SessionPanel"]
+layout_mode = 2
+autowrap_mode = 3
+theme_override_font_sizes/font_size = 16
+
+[node name="RoomButtons" type="VBoxContainer" parent="Scroll/Center/Panel/Padding/Content/SessionPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="StartButton" type="Button" parent="Scroll/Center/Panel/Padding/Content/SessionPanel/RoomButtons"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+text = "Iniciar partida"
+disabled = true
+
+[node name="LeaveButton" type="Button" parent="Scroll/Center/Panel/Padding/Content/SessionPanel/RoomButtons"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+text = "Salir de sala"
+disabled = true
+
+[node name="MessageLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+visible = false
+layout_mode = 2
+autowrap_mode = 3
+
+[node name="HintLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+text = "Todos deben usar la misma versión del juego."
+horizontal_alignment = 1
+autowrap_mode = 3
+theme_override_font_sizes/font_size = 15

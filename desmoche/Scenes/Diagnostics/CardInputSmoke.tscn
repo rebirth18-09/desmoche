@@ -1,0 +1,88 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Diagnostics/CardInputSmoke.cs" id="1_test"]
+[ext_resource type="PackedScene" path="res://Scenes/Carta.tscn" id="2_card"]
+[ext_resource type="Script" path="res://Scripts/Presentation/CardDropZone.cs" id="3_drop"]
+
+[node name="CardInputSmoke" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_test")
+
+[node name="Padding" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="Content" type="VBoxContainer" parent="Padding"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Instructions" type="Label" parent="Padding/Content"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Prueba de input de cartas · Fase 9\nClick para seleccionar varias cartas. Tab + Enter/Espacio también selecciona.\nArrastra hacia otra carta o hacia la zona inferior. Soltar no debe seleccionar.\nLas tres cartas inferiores son públicas, dorso y vacío: no permiten interacción."
+autowrap_mode = 3
+
+[node name="Cards" type="HFlowContainer" parent="Padding/Content"]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 12
+
+[node name="Card0" parent="Padding/Content/Cards" instance=ExtResource("2_card")]
+layout_mode = 2
+
+[node name="Card1" parent="Padding/Content/Cards" instance=ExtResource("2_card")]
+layout_mode = 2
+
+[node name="Card2" parent="Padding/Content/Cards" instance=ExtResource("2_card")]
+layout_mode = 2
+
+[node name="Status" type="Label" parent="Padding/Content"]
+layout_mode = 2
+text = "Preparando diagnóstico..."
+autowrap_mode = 3
+
+[node name="AllowDrop" type="CheckButton" parent="Padding/Content"]
+layout_mode = 2
+button_pressed = true
+text = "Permitir drops"
+
+[node name="DropZone" type="PanelContainer" parent="Padding/Content"]
+custom_minimum_size = Vector2(0, 92)
+layout_mode = 2
+mouse_filter = 0
+script = ExtResource("3_drop")
+
+[node name="Caption" type="Label" parent="Padding/Content/DropZone"]
+layout_mode = 2
+mouse_filter = 2
+text = "SOLTAR AQUÍ\nSe cuenta una solicitud visual. No se modifica ningún estado de partida."
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="StaticCards" type="HFlowContainer" parent="Padding/Content"]
+layout_mode = 2
+theme_override_constants/h_separation = 16
+theme_override_constants/v_separation = 12
+
+[node name="Public" parent="Padding/Content/StaticCards" instance=ExtResource("2_card")]
+layout_mode = 2
+
+[node name="Back" parent="Padding/Content/StaticCards" instance=ExtResource("2_card")]
+layout_mode = 2
+
+[node name="Empty" parent="Padding/Content/StaticCards" instance=ExtResource("2_card")]
+layout_mode = 2

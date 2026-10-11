@@ -1,0 +1,143 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Presentation/SingleplayerSetup.cs" id="1_script"]
+[ext_resource type="Theme" path="res://Assets/UI/MenuTheme.tres" id="2_theme"]
+
+[sub_resource type="StyleBoxFlat" id="Style_primary"]
+bg_color = Color(0.78, 0.59, 0.24, 1)
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+content_margin_left = 20.0
+content_margin_top = 12.0
+content_margin_right = 20.0
+content_margin_bottom = 12.0
+
+[node name="Singleplayer" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("2_theme")
+script = ExtResource("1_script")
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+follow_focus = true
+
+[node name="Center" type="CenterContainer" parent="Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Panel" type="PanelContainer" parent="Scroll/Center"]
+custom_minimum_size = Vector2(520, 0)
+layout_mode = 2
+
+[node name="Padding" type="MarginContainer" parent="Scroll/Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="Content" type="VBoxContainer" parent="Scroll/Center/Panel/Padding"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.81, 0.5, 1)
+theme_override_font_sizes/font_size = 34
+text = "Singleplayer"
+horizontal_alignment = 1
+
+[node name="SubtitleLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+text = "Tu mesa, tu ritmo."
+horizontal_alignment = 1
+
+[node name="LocalLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.61, 0.75, 0.66, 1)
+theme_override_font_sizes/font_size = 16
+text = "Todo local · Sin conexión a Internet"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Separator" type="HSeparator" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+text = "Tu nombre"
+
+[node name="NameInput" type="LineEdit" parent="Scroll/Center/Panel/Padding/Content"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "Jugador"
+placeholder_text = "Escribe tu nombre"
+max_length = 24
+select_all_on_focus = true
+
+[node name="BotCountLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+text = "Con cuántos bots quieres jugar"
+autowrap_mode = 3
+
+[node name="BotCountInput" type="OptionButton" parent="Scroll/Center/Panel/Padding/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+tooltip_text = "El total incluye a tu jugador."
+
+[node name="DifficultyLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+text = "Dificultad"
+
+[node name="DifficultyInput" type="OptionButton" parent="Scroll/Center/Panel/Padding/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+
+[node name="DifficultyHint" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.74, 0.79, 0.71, 1)
+theme_override_font_sizes/font_size = 16
+text = "Prioriza combinaciones y conserva cartas con posibilidades."
+autowrap_mode = 3
+
+[node name="FairPlayLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.66, 0.76, 0.67, 1)
+theme_override_font_sizes/font_size = 15
+text = "Mismas reglas. Los bots no ven tu mano ni las cartas del mazo."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="MessageLabel" type="Label" parent="Scroll/Center/Panel/Padding/Content"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.65, 0.65, 1)
+text = ""
+autowrap_mode = 3
+
+[node name="StartButton" type="Button" parent="Scroll/Center/Panel/Padding/Content"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.08, 0.11, 0.06, 1)
+theme_override_styles/normal = SubResource("Style_primary")
+text = "Empezar partida"
+
+[node name="BackButton" type="Button" parent="Scroll/Center/Panel/Padding/Content"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+text = "Volver al inicio"

@@ -1,0 +1,78 @@
+@startuml Fase4_Estados
+hide empty description
+[*] --> Preparing
+Preparing --> InitialExchange : StartMatch / reparto de 9
+InitialExchange --> InitialDeclarations : todas las selecciones / intercambio simultaneo
+InitialDeclarations --> Finished : victoria inicial valida
+InitialDeclarations --> AwaitingDraw : todos listos
+AwaitingDraw --> AwaitingClaims : DrawFromDeck / carta publica
+AwaitingDraw --> AwaitingPayment : DrawFromDiscard / uso valido
+AwaitingClaims --> AwaitingDraw : nadie reclama / carta al pozo
+note on link
+Primera oferta sin uso: mismo jugador, segundo robo del mazo.
+Las siguientes: jugador habilitado a la derecha del origen.
+end note
+AwaitingClaims --> AwaitingPayment : reclamo elegido por prioridad
+AwaitingClaims --> Finished : victoria declarada valida
+AwaitingPayment --> AwaitingClaims : PayCard / pago publico
+AwaitingPayment --> AwaitingDraw : mano vacia / continuar sin pago
+AwaitingPayment --> Finished : DeclareDesmoche valido
+AwaitingDraw --> Finished : no existen fuentes legales
+Finished --> Preparing : PrepareNextMatch / rota quien inicia
+Finished --> [*]
+@enduml
+
+@startuml Fase4_Clases
+class GameManager {
+  +Phase
+  +CurrentPlayerId
+  +PaymentPlayerId
+  +WinnerPlayerId
+  +Result
+  +State
+  +StartMatch()
+  +DrawFromDeck()
+  +DrawFromDiscard()
+  +SubmitClaim()
+  +ResolveClaims()
+  +PayCard()
+  +DeclareDesmoche()
+  +GetViewFor()
+}
+class GameState {
+  +Players
+  +Melds
+  +OfferedCard
+  +DeckCount
+  +DiscardCount
+  +CreateViewFor()
+}
+class RulesValidator
+class Meld {
+  +Id
+  +OwnerPlayerId
+  +Cards
+}
+class MeldPlay {
+  +MeldId
+  +CardIds
+}
+class Player
+class PlayerHand
+class Deck
+class DiscardPile
+class Card
+GameManager --> GameState : unico escritor del motor
+GameManager --> RulesValidator : valida cartas y victoria
+GameManager ..> MeldPlay : solicitudes copiadas
+GameState *-- Player
+GameState *-- Meld
+GameState *-- Deck
+GameState *-- DiscardPile
+GameState o-- Card : oferta temporal
+Player *-- PlayerHand
+PlayerHand o-- Card
+Meld o-- Card
+Deck o-- Card
+DiscardPile o-- Card
+@enduml

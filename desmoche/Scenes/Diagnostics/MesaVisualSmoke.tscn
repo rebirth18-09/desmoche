@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://Scenes/Main.tscn" id="1_main"]
+[ext_resource type="Script" path="res://Scripts/Diagnostics/MesaVisualSmoke.cs" id="2_test"]
+
+[node name="Main" instance=ExtResource("1_main")]
+script = ExtResource("2_test")

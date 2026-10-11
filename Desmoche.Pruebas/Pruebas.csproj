@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../desmoche/Scripts/Domain/*.cs" Link="Domain/%(Filename)%(Extension)" />
+    <Compile Include="../desmoche/Scripts/Application/*.cs" Link="Application/%(Filename)%(Extension)" />
+    <Compile Include="../desmoche/Scripts/Networking/Core/*.cs" Link="Networking/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

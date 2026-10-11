@@ -1,0 +1,119 @@
+{
+  "generator": "built-in image_gen",
+  "generatedDate": "2026-10-10",
+  "inspection": "Every image inspected with view_image before selection.",
+  "assets": [
+    {
+      "path": "res://Assets/Casino/CasinoTable.png",
+      "width": 2017,
+      "height": 780,
+      "bytes": 2165330,
+      "role": "Single clean wood/felt/leather/gold table and bottom hand tray background",
+      "source": "exec-5666ca32-0c71-42a5-8777-8a7427c912ee.png",
+      "regions": {
+        "tableNormalized": [
+          0.01,
+          0.145,
+          0.98,
+          0.64
+        ],
+        "handTrayNormalized": [
+          0.07,
+          0.815,
+          0.86,
+          0.175
+        ]
+      },
+      "notes": "No cards, players, avatars, names, labels, counts or other game data baked into background. Near-reference aspect ratio. Requested 4K was not returned; actual size stated here."
+    },
+    {
+      "path": "res://Assets/Casino/Portraits.png",
+      "width": 1254,
+      "height": 1254,
+      "bytes": 2195506,
+      "role": "Decorative photographic avatar atlas with exact 2x2 cells",
+      "source": "exec-62814b7e-cd58-4d6e-ad89-c54b641f146c.png",
+      "regions": [
+        {
+          "index": 0,
+          "name": "Woman, long chestnut hair",
+          "rect": [
+            0,
+            0,
+            627,
+            627
+          ]
+        },
+        {
+          "index": 1,
+          "name": "Man, dark beard",
+          "rect": [
+            627,
+            0,
+            627,
+            627
+          ]
+        },
+        {
+          "index": 2,
+          "name": "Man, plain cap",
+          "rect": [
+            0,
+            627,
+            627,
+            627
+          ]
+        },
+        {
+          "index": 3,
+          "name": "Man, clean-shaven",
+          "rect": [
+            627,
+            627,
+            627,
+            627
+          ]
+        }
+      ],
+      "notes": "Synthetic decorative faces; never represent real player identity. Consumer chooses a stable local avatar and clips atlas cell to a circle in Godot. No baked frames/text."
+    },
+    {
+      "path": "res://Assets/Casino/Courts.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 3281252,
+      "role": "Three traditional double-headed playing-card court illustrations",
+      "source": "exec-f870c61a-3843-409d-a1c7-e114eb8bf095.png",
+      "regions": [
+        {
+          "rank": "J",
+          "rect": [
+            0,
+            0,
+            512,
+            1024
+          ]
+        },
+        {
+          "rank": "Q",
+          "rect": [
+            512,
+            0,
+            512,
+            1024
+          ]
+        },
+        {
+          "rank": "K",
+          "rect": [
+            1024,
+            0,
+            512,
+            1024
+          ]
+        }
+      ],
+      "notes": "Pale ivory background, no alpha, no rank letters, no numbers, no suit marks. Consumer separately renders exact domain rank/suit and maps this illustration solely by rank. Illustrations generated, not copied from commercial deck."
+    }
+  ]
+}

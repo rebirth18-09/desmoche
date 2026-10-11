@@ -1,0 +1,62 @@
+@startuml
+title Fase 8 — Mesa visual por destinatario y propietario
+skinparam classAttributeIconSize 0
+class GameManager
+class ServerSession
+class NetworkManager {
+ View : SnapshotDto
+ ViewChanged
+ ConnectionChanged
+}
+class SnapshotDto {
+ RecipientId / OwnHand
+ Players / Melds
+ DeckCount / DiscardTop / OfferedCard
+ Phase / PaymentPlayerId
+ RevealedHands
+}
+class Main <<Control>>
+class Mesa <<Control>> {
+ Bind(NetworkManager)
+ DisplaySnapshot(view, status)
+ RenderedPlayerCount
+}
+class Carta <<PanelContainer>> {
+ ShowFace(id)
+ ShowBack()
+ ShowEmpty()
+}
+class CartaArtwork <<Control>> {
+ ShowFace(suit, rank, ink)
+ ShowBack()
+ ShowEmpty()
+}
+class "Rivales / juegos rivales" as RivalZones <<Containers>>
+class "Centro: mazo / pozo / oferta" as Center <<Containers>>
+class "Mi juego / bandeja / mano" as OwnZones <<Containers>>
+class Card
+ServerSession *-- GameManager
+NetworkManager --> ServerSession : solo host
+NetworkManager --> SnapshotDto : vista autorizada
+Main *-- NetworkManager : ruta persistente
+Main *-- Mesa
+Mesa --> NetworkManager : leer View / salir
+Mesa *-- RivalZones : SeatIndex / OwnerId
+Mesa *-- Center
+Mesa *-- OwnZones : RecipientId / OwnHand
+RivalZones *-- Carta : solo Melds públicos
+Center *-- Carta : dorso / pozo / oferta
+OwnZones *-- Carta : cartas autorizadas
+Carta *-- CartaArtwork
+Carta --> Card : identidad visual
+note right of CartaArtwork
+Arte local original.
+Dorso/vacío borran rango y palo.
+Sin lógica de reglas.
+end note
+note right of Mesa
+Avatares de iniciales: sin nuevos DTO.
+No actions de cartas / RPC / motor local.
+Manos rivales solo en revelación autorizada.
+end note
+@enduml
