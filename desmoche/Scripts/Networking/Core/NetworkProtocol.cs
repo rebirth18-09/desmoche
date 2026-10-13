@@ -12,8 +12,10 @@ public enum ActionKind
 {
     StartMatch, ExchangeCard, FinishInitial, DeclareInitial, DrawDeck,
     DrawDiscard, Claim, Pass, Publish, Transfer, DeclareDesmoche, Pay,
-    CompleteWithoutPayment, PrepareNextMatch
+    CompleteWithoutPayment, PrepareNextMatch, SayPasa
 }
+public sealed record OrderChallengeDto(int PlayerId, long Id, int RemainingMilliseconds);
+public sealed record InitialVictoryDto(InitialVictoryKind Kind, int[] Cards);
 public sealed record AdmissionDto(int Version, string Session, int RecipientId);
 public sealed record PlayDto(int[] Cards, int? MeldId = null);
 public sealed record CommandDto(int Version, string Session, long RequestId,
@@ -31,12 +33,13 @@ public sealed record SnapshotDto(int Version, string Session, long Revision,
     int? CurrentPlayerId, int? PaymentPlayerId, int? WinnerPlayerId,
     PublicPlayerDto[] Players, int[] OwnHand, MeldDto[] Melds,
     int DeckCount, int DiscardCount, int? DiscardTop, int? OfferedCard,
-    RevealedHandDto[] RevealedHands, bool OwnResponseSubmitted);
+    RevealedHandDto[] RevealedHands, bool OwnResponseSubmitted, int ExchangeCount = 0,
+    OrderChallengeDto? OrderChallenge = null, bool OpeningOffer = false, InitialVictoryDto? InitialVictory = null);
 
 // Contrato de transporte explicito: nunca serializar GameState ni Player.
 public static class NetworkProtocol
 {
-    public const int Version = 2;
+    public const int Version = 4;
     public const int Port = 7000;
     public const int MaxCommandBytes = 8192;
     public const int MaxSnapshotBytes = 32768;

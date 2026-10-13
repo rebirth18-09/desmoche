@@ -1,7 +1,5 @@
 using System;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
 using Desmoche.Application;
 using Desmoche.Networking;
 using Desmoche.Networking.Core;
@@ -42,13 +40,24 @@ public partial class Lobby : Control
     private long _pendingStart;
     private bool _ready;
     private bool _leaving;
-    private string _hostAddresses = "";
+    private string _roomCode = "";
+    private Control _frame = null!;
+    private MarginContainer _padding = null!;
+    private Label _title = null!, _subtitle = null!, _networkHint = null!;
+    private StyleBox _frameStyle = null!;
+    private readonly StyleBoxEmpty _openStyle = new();
 
     // Main decide la navegación; Lobby nunca cambia ni recrea NetworkManager.
     public event Action? BackRequested;
 
     public override void _Ready()
     {
+        _frame = GetNode<Control>("Scroll/Center/Panel");
+        _padding = GetNode<MarginContainer>("Scroll/Center/Panel/Padding");
+        _frameStyle = _frame.GetThemeStylebox("panel");
+        _title = GetNode<Label>(ContentPath + "TitleLabel");
+        _subtitle = GetNode<Label>(ContentPath + "SubtitleLabel");
+        _networkHint = GetNode<Label>(ContentPath + "NetworkLabel");
         _optionsPanel = GetNode<Control>(ContentPath + "OptionsPanel");
         _createPanel = GetNode<Control>(ContentPath + "CreatePanel");
         _joinPanel = GetNode<Control>(ContentPath + "JoinPanel");
@@ -73,6 +82,8 @@ public partial class Lobby : Control
         _message = GetNode<Label>(ContentPath + "MessageLabel");
         _createName.MaxLength = NetworkProtocol.MaxNameLength;
         _joinName.MaxLength = NetworkProtocol.MaxNameLength;
+        _ip.MaxLength = 12;
+        _ip.PlaceholderText = "Ej.: AB7K2M";
         _createOption.Pressed += ShowCreate;
         _joinOption.Pressed += ShowJoin;
         _back.Pressed += RequestBack;
@@ -86,6 +97,7 @@ public partial class Lobby : Control
         _joinName.TextChanged += OnNameChanged;
         _createName.TextSubmitted += OnCreateNameSubmitted;
         _ip.TextSubmitted += OnAddressSubmitted;
+        Resized += UpdateLayout;
         _ready = true;
         Render();
     }
@@ -96,7 +108,7 @@ public partial class Lobby : Control
         Unbind();
         _network = network;
         _lastState = network.State;
-        if (network.IsHost) _hostAddresses = LocalAddresses();
+        if (network.IsHost) _roomCode = _network!.RoomCode;
         network.ViewChanged += OnViewChanged;
         network.ConnectionChanged += OnConnectionChanged;
         network.ActionCompleted += OnActionCompleted;
@@ -114,7 +126,7 @@ public partial class Lobby : Control
         _network = null;
         _pendingStart = 0;
         _lastState = ConnectionState.Offline;
-        _hostAddresses = "";
+        _roomCode = "";
     }
 
     public override void _ExitTree()
@@ -134,6 +146,7 @@ public partial class Lobby : Control
         _joinName.TextChanged -= OnNameChanged;
         _createName.TextSubmitted -= OnCreateNameSubmitted;
         _ip.TextSubmitted -= OnAddressSubmitted;
+        Resized -= UpdateLayout;
         _ready = false;
     }
 
@@ -169,7 +182,7 @@ public partial class Lobby : Control
             if (_panel == OfflinePanel.Options) RequestBack();
             else ShowOptions();
         }
-        else if (_network.State is ConnectionState.Connecting or ConnectionState.Handshaking)
+        else if (_network.State is ConnectionState.Searching or ConnectionState.Connecting or ConnectionState.Handshaking)
             LeaveRoom();
         else return;
         GetViewport().SetInputAsHandled();
@@ -212,19 +225,19 @@ public partial class Lobby : Control
 
     private void OnConnectionChanged(ConnectionState state, string message)
     {
-        bool wasConnecting = _lastState is ConnectionState.Connecting or ConnectionState.Handshaking;
+        bool wasConnecting = _lastState is ConnectionState.Searching or ConnectionState.Connecting or ConnectionState.Handshaking;
         _lastState = state;
         if (state == ConnectionState.Offline)
         {
             _pendingStart = 0;
-            _hostAddresses = "";
+            _roomCode = "";
             _panel = wasConnecting && !_leaving ? OfflinePanel.Join : OfflinePanel.Options;
             ShowMessage(message, !_leaving && wasConnecting);
         }
         else
         {
             ShowMessage("");
-            if (state == ConnectionState.Hosting) _hostAddresses = LocalAddresses();
+            if (state == ConnectionState.Hosting) _roomCode = _network!.RoomCode;
         }
         Render();
         FocusDefault();
@@ -266,19 +279,14 @@ public partial class Lobby : Control
     private void JoinRoom()
     {
         if (_panel != OfflinePanel.Join || !CanConnect() || !ReadName(_joinName, out string name)) return;
-        string address = _ip.Text.Trim();
-        if (!IPAddress.TryParse(address, out IPAddress? parsed) ||
-            IPAddress.Any.Equals(parsed) || IPAddress.IPv6Any.Equals(parsed) ||
-            IPAddress.None.Equals(parsed) || IPAddress.IPv6None.Equals(parsed) ||
-            IPAddress.Broadcast.Equals(parsed) || parsed.IsIPv6Multicast ||
-            parsed.AddressFamily == AddressFamily.InterNetwork && parsed.GetAddressBytes()[0] >= 224)
+        string code = RoomCodeProtocol.Normalize(_ip.Text);
+        if (!RoomCodeProtocol.IsCode(code))
         {
-            ShowMessage("Escribe la IP del host; por ejemplo, 192.168.1.50. En una misma PC puedes usar 127.0.0.1.", true);
-            _ip.GrabFocus();
-            return;
+            ShowMessage("Escribe el código de seis letras y números que aparece en la sala del host.", true);
+            _ip.GrabFocus(); return;
         }
         ShowMessage("");
-        Error error = _network!.Join(parsed.ToString(), name);
+        Error error = _network!.JoinByCode(code, name);
         if (error != Error.Ok) ShowConnectionError(error, false);
         Render();
     }
@@ -298,7 +306,7 @@ public partial class Lobby : Control
     private void LeaveRoom()
     {
         if (_network is null || _network.State == ConnectionState.Offline) return;
-        bool connecting = _network.State is ConnectionState.Connecting or ConnectionState.Handshaking;
+        bool connecting = _network.State is ConnectionState.Searching or ConnectionState.Connecting or ConnectionState.Handshaking;
         _leaving = true;
         try
         {
@@ -311,8 +319,8 @@ public partial class Lobby : Control
     private void ShowConnectionError(Error error, bool creating)
     {
         string text = creating
-            ? "No se pudo crear la sala. Comprueba que otra sala no esté usando el puerto UDP 7000."
-            : "No se pudo iniciar la conexión. Comprueba la IP y que la sala esté abierta.";
+            ? "No se pudo crear la sala. Comprueba que no haya otra sala abierta en este dispositivo."
+            : "No se pudo iniciar la conexión. Comprueba el código y que la sala esté abierta.";
         ShowMessage(text + " Código: " + error + ".", true);
     }
 
@@ -329,12 +337,13 @@ public partial class Lobby : Control
         ConnectionState state = _network?.State ?? ConnectionState.Offline;
         SnapshotDto? view = _network?.View;
         bool offline = state == ConnectionState.Offline;
-        bool connecting = state is ConnectionState.Connecting or ConnectionState.Handshaking;
+        bool connecting = state is ConnectionState.Searching or ConnectionState.Connecting or ConnectionState.Handshaking;
         bool host = _network?.IsHost == true;
         _optionsPanel.Visible = offline && _panel == OfflinePanel.Options;
         _createPanel.Visible = offline && _panel == OfflinePanel.Create;
         _joinPanel.Visible = offline && _panel == OfflinePanel.Join;
         _sessionPanel.Visible = !offline;
+        UpdateLayout();
         _createName.Editable = offline;
         _joinName.Editable = offline;
         _ip.Editable = offline;
@@ -352,7 +361,7 @@ public partial class Lobby : Control
         _status.Text = _network?.Status ?? "Sin conexión.";
         _addresses.Visible = !connecting;
         _addresses.Text = host
-            ? "IP del host: " + _hostAddresses + "\nComparte la IP de tu Wi-Fi o Ethernet. Puerto UDP " + NetworkProtocol.Port + "."
+            ? "Código de sala: " + _roomCode + "\nCompártelo con tus amigos en la misma red Wi-Fi o Ethernet."
             : "Conectado a la sala del host.";
         _playersTitle.Visible = !connecting;
         _players.Visible = !connecting;
@@ -372,14 +381,18 @@ public partial class Lobby : Control
         }
     }
 
-    private static string LocalAddresses()
+    private void UpdateLayout()
     {
-        string[] addresses = Godot.IP.GetLocalAddresses()
-            .Where(value => IPAddress.TryParse(value, out IPAddress? address) &&
-                address.AddressFamily == AddressFamily.InterNetwork &&
-                !IPAddress.IsLoopback(address) && !IPAddress.Any.Equals(address) &&
-                address.GetAddressBytes()[0] < 224)
-            .Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray();
-        return addresses.Length == 0 ? "consulta IPv4 con ipconfig" : string.Join(", ", addresses);
+        if (!_ready) return;
+        bool options = _optionsPanel.Visible;
+        _frame.AddThemeStyleboxOverride("panel", options ? _openStyle : _frameStyle);
+        _frame.CustomMinimumSize = new Vector2(Math.Clamp(Size.X - 64, 280, options ? 940 : 690), 0);
+        foreach (string side in new[] { "left", "right", "top", "bottom" })
+            _padding.AddThemeConstantOverride("margin_" + side, options ? 0 : 32);
+        _title.Text = options ? "DESMOCHE" : "Multijugador";
+        _title.AddThemeFontSizeOverride("font_size", options ? Size.Y < 700 ? 52 : 72 : 18);
+        _subtitle.Visible = _networkHint.Visible = options;
+        GetNode<Control>(ContentPath + "HeaderDivider").Visible = options;
     }
+
 }

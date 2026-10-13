@@ -51,24 +51,26 @@ public partial class LobbySmoke : Main
                 Check(_testNetwork.View is { Phase: GamePhase.Preparing } v &&
                     v.Players.Length == 1, "El host es el primer jugador.");
                 Check(StartButton.Disabled, "Inicio bloqueado con un solo jugador.");
+                Check(RoomCodeProtocol.IsCode(_testNetwork.RoomCode), "La sala tiene un código válido.");
+                GD.Print("LOBBY CODE: " + _testNetwork.RoomCode);
                 GD.Print("LOBBY HOST LISTO");
             }
             else
             {
-                IPInput.Text = "IP incorrecta";
+                IPInput.Text = "!incorrecto!";
                 Press("JoinPanel/Buttons/JoinButton");
                 Check(_testNetwork.State == ConnectionState.Offline &&
                     GetNode<Label>(ContentPath + "MessageLabel").Text.Length > 0,
-                    "IP inválida rechazada con mensaje.");
-                IPInput.Text = Option(args, "--ip", "127.0.0.1");
+                    "Código inválido rechazado con mensaje.");
+                IPInput.Text = Option(args, "--code", "");
                 Press("JoinPanel/Buttons/JoinButton");
-                Check(_testNetwork.State == ConnectionState.Connecting, "Unirse desde botón.");
+                Check(_testNetwork.State == ConnectionState.Searching, "Buscar por código desde botón.");
                 Check(!NameInput.Editable && !IPInput.Editable, "Campos bloqueados al conectar.");
                 Press("SessionPanel/RoomButtons/LeaveButton");
                 CheckOffline();
                 Press("OptionsPanel/JoinOption");
                 Press("JoinPanel/Buttons/JoinButton");
-                Check(_testNetwork.State == ConnectionState.Connecting, "Reintento tras cancelar.");
+                Check(_testNetwork.State == ConnectionState.Searching, "Reintento tras cancelar.");
             }
         }
         catch (Exception ex) { Finish(false, ex.Message); }
@@ -169,7 +171,7 @@ public partial class LobbySmoke : Main
 
     private void CheckTimeout(ulong now)
     {
-        if (now - _began > 45000) throw new InvalidOperationException("Tiempo agotado; revisar IP, host y registros.");
+        if (now - _began > 45000) throw new InvalidOperationException("Tiempo agotado; revisar código, host y registros.");
     }
 
     private void Check(bool condition, string description)

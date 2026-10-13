@@ -91,6 +91,8 @@ public partial class Mesa
             LayoutPublicCards(rival.GetNode<Control>("Rows"), RivalWidth, new Vector2(50.3f, 72), 5);
         LayoutPublicCards(_ownGames, 1120, new Vector2(90, 96), 8);
 
+        PositionPasaButton();
+
         int count = _hand.GetChildCount();
         float cardWidth = count == 0 ? 124 : Math.Min(124, (1296f - Math.Max(0, count - 1) * 12) / count);
         foreach (Carta card in _hand.GetChildren().OfType<Carta>())
@@ -133,6 +135,43 @@ public partial class Mesa
         _revealedZone.Size = new Vector2(width, _revealedZone.GetCombinedMinimumSize().Y);
         if (_revealedZone.Visible) end += _revealedZone.Size.Y + 24;
         _casinoPadding.CustomMinimumSize = new Vector2(0, end);
+    }
+
+    private void PositionPasaButton()
+    {
+        if (!_pasaButton.Visible || _challengedMeld is null || !IsInstanceValid(_challengedMeld)) return;
+        _pasaButton.Scale = Vector2.One / CasinoScale;
+        _pasaButton.Size = new Vector2(76, 34);
+        Rect2 group = VisibleCardsRect(_challengedMeld);
+        Rect2 board = _casinoCanvas.GetGlobalRect();
+        Vector2 position = new(group.End.X + 8, group.Position.Y + (group.Size.Y - _pasaButton.Size.Y) / 2);
+        var rows = _rivalGames.GetChildren().OfType<VBoxContainer>()
+            .Select(rival => rival.GetNode<Control>("Rows")).Append(_ownGames);
+        Rect2[] otherGroups = rows.SelectMany(row => row.GetChildren().OfType<HFlowContainer>())
+            .Where(groupNode => groupNode != _challengedMeld).Select(VisibleCardsRect).ToArray();
+        bool Occupied(Vector2 candidate) => candidate.X < board.Position.X + 8 ||
+            candidate.X + _pasaButton.Size.X > board.End.X - 8 ||
+            otherGroups.Any(rect => new Rect2(candidate, _pasaButton.Size).Intersects(rect));
+        if (Occupied(position))
+            position = new Vector2(group.Position.X - _pasaButton.Size.X - 8, position.Y);
+        if (Occupied(position))
+            position = new Vector2(Math.Max(board.Position.X + 8, group.End.X - _pasaButton.Size.X), group.End.Y + 6);
+        _pasaButton.Position = _casinoCanvas.GetGlobalTransform().AffineInverse() * position;
+    }
+
+    private static Rect2 VisibleCardsRect(Control group)
+    {
+        Carta[] cards = group.GetChildren().OfType<Carta>().ToArray();
+        if (cards.Length == 0) return group.GetGlobalRect();
+        Rect2 first = cards[0].GetGlobalRect();
+        Vector2 minimum = first.Position, maximum = first.End;
+        foreach (Carta card in cards.Skip(1))
+        {
+            Rect2 rect = card.GetGlobalRect();
+            minimum = new Vector2(Math.Min(minimum.X, rect.Position.X), Math.Min(minimum.Y, rect.Position.Y));
+            maximum = new Vector2(Math.Max(maximum.X, rect.End.X), Math.Max(maximum.Y, rect.End.Y));
+        }
+        return new Rect2(minimum, maximum - minimum);
     }
 
     private static void LayoutPublicCards(Control rows, float width, Vector2 maximum, float gap)

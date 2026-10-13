@@ -1,79 +1,76 @@
 using System.Linq;
+using Desmoche.Application;
 using Desmoche.Domain;
 using Desmoche.Networking.Core;
 using Desmoche.Presentation.Interaction;
-using Desmoche.Singleplayer;
 using Godot;
 
 namespace Desmoche.Presentation;
 
-// Solo construye la declaración elegida. La sesión decide si cumple las reglas.
 public partial class Mesa
 {
-    private OptionButton _initialVictoryType = null!;
-    private Button _declareInitial = null!;
-    private Label _initialHint = null!;
+    private Button _declareInitial = null!, _declareColor = null!, _declarePeladilla = null!;
 
     private void InitializeInitialDeclarations()
     {
-        _initialVictoryType = new OptionButton { Name = "InitialVictoryType" };
-        _initialVictoryType.AddThemeFontSizeOverride("font_size", 14);
-        _initialVictoryType.AddItem("Victoria inicial…", -1);
-        _initialVictoryType.AddItem("A–2–3–4–5", (int)InitialVictoryKind.LowStraight);
-        _initialVictoryType.AddItem("10–J–Q–K–A", (int)InitialVictoryKind.HighStraight);
-        _initialVictoryType.AddItem("Cuarta", (int)InitialVictoryKind.Cuarta);
-        _initialVictoryType.AddItem("Color", (int)InitialVictoryKind.Color);
-        _initialVictoryType.AddItem("Peladilla", (int)InitialVictoryKind.Peladilla);
-        _initialVictoryType.ItemSelected += _ => RefreshSelection();
-        _contextActions.AddChild(_initialVictoryType);
-        _initialHint = Text("", 12);
-        _initialHint.Name = "InitialVictoryHint";
-        _contextActions.AddChild(_initialHint);
-        _declareInitial = ContextButton("DeclareInitialButton", "Declarar victoria inicial");
+        _declareInitial = ContextButton("DeclareInitialButton", "Desmoche");
+        _declareColor = ContextButton("ColorButton", "Color");
+        _declarePeladilla = ContextButton("PeladillaButton", "Peladilla");
         _declareInitial.Pressed += RequestInitialVictory;
+        _declareColor.Pressed += () => SendInitial(InitialVictoryKind.Color, _handState.Order.ToArray());
+        _declarePeladilla.Pressed += () => SendInitial(InitialVictoryKind.Peladilla, null);
+        _declareColor.TooltipText = "Ordena toda tu mano de menor a mayor. El As puede ir al principio o al final.";
+        _declarePeladilla.TooltipText = "Declara que no se puede formar ningún juego. Si existe uno aunque esté desordenado, quedas eliminado.";
     }
 
     private void RefreshInitialDeclarations()
     {
-        bool ownInitial = InteractionActions.CanRequest(_interactionView, ActionKind.DeclareInitial);
-        bool opening = InteractionActions.CanRequest(_interactionView, ActionKind.Claim) &&
-            _interactionView!.OwnHand.Length == 9 &&
-            !_interactionView.Melds.Any(m => m.OwnerId == _interactionView.RecipientId) &&
-            (_session is not LocalGameSession local || local.OpeningOffer);
-        bool available = ownInitial || opening;
-        _initialVictoryType.Visible = available;
-        _initialVictoryType.Disabled = !CanSend;
-        _initialVictoryType.SetItemDisabled(4, opening);
-        _initialVictoryType.SetItemDisabled(5, opening);
-        if (opening && _initialVictoryType.Selected >= 4) _initialVictoryType.Select(0);
-        bool selected = available && _initialVictoryType.Selected > 0;
-        _initialHint.Visible = _declareInitial.Visible = selected;
-        _declareInitial.Disabled = !CanSend;
-        _initialHint.Text = opening
-            ? "Solo en la primera oferta. Prepara un juego que la incluya. Declarar mal elimina."
-            : _initialVictoryType.Selected >= 4
-                ? "Se evalúan tus nueve cartas. Declarar mal elimina."
-                : "Selecciona las cartas en el orden de tu mano. Declarar mal elimina.";
-        _initialHint.CustomMinimumSize = new Vector2(180, 0);
+        SnapshotDto? view = _interactionView;
+        bool initial = InteractionActions.CanRequest(view, ActionKind.DeclareInitial);
+        bool afterExchange = initial && view!.Phase == GamePhase.InitialDeclarations;
+        Card[] order = _handState.Order.Select(Card.FromId).ToArray();
+        _declareColor.Visible = afterExchange && order.Length == 9 && RulesValidator.IsColor(order);
+        _declarePeladilla.Visible = afterExchange && order.Length == 9 &&
+            !InitialHandPresentation.HasVisibleMeld(order);
+        _declareInitial.Visible = FindInitialDeclaration() is not null;
+        _declareInitial.Disabled = _declareColor.Disabled = _declarePeladilla.Disabled = !CanSend;
+    }
+
+    private (InitialVictoryKind Kind, int[] Cards, bool FromOffer)? FindInitialDeclaration()
+    {
+        if (_interactionView is not { } view || view.OwnHand.Length != 9) return null;
+        if (InteractionActions.CanRequest(view, ActionKind.DeclareInitial))
+        {
+            var choice = InitialHandPresentation.FindOrderedVictory(_handState.Order,
+                view.Phase == GamePhase.InitialDeclarations);
+            if (choice is not null) return (choice.Value.Kind, choice.Value.Cards, false);
+        }
+        if (view.OpeningOffer && InteractionActions.CanRequest(view, ActionKind.Claim))
+        {
+            PlayDto[] plays = _handState.BuildPlays();
+            if (plays.Length != 1 || plays[0].MeldId is not null || view.OfferedCard is not int offer) return null;
+            var hand = new PlayerHand(view.OwnHand.Select(Card.FromId));
+            foreach (InitialVictoryKind kind in InitialHandPresentation.CombinationKinds)
+                if (RulesValidator.ValidateInitialVictory(hand, kind,
+                    plays[0].Cards.Select(Card.FromId).ToArray(), Card.FromId(offer)).IsValid &&
+                    RulesValidator.HasAlternatingSetOrder(plays[0].Cards.Select(Card.FromId).ToArray()))
+                    return (kind, plays[0].Cards, true);
+        }
+        return null;
+    }
+
+    private void SendInitial(InitialVictoryKind kind, int[]? cards)
+    {
+        if (!CanSend || !InteractionActions.CanRequest(_interactionView, ActionKind.DeclareInitial)) return;
+        SendRequest(new VisualActionRequest(ActionKind.DeclareInitial, InitialKind: kind, Cards: cards));
     }
 
     private void RequestInitialVictory()
     {
-        if (!CanSend || _interactionView is not { } view || _initialVictoryType.Selected <= 0) return;
-        var kind = (InitialVictoryKind)_initialVictoryType.GetSelectedId();
-        if (InteractionActions.CanRequest(view, ActionKind.DeclareInitial))
-        {
-            int[]? cards = kind is InitialVictoryKind.Color or InitialVictoryKind.Peladilla
-                ? null : _handState.SelectedIds.ToArray();
-            if (cards is { Length: 0 }) { Message("Selecciona las cartas de la declaración."); return; }
-            SendRequest(new VisualActionRequest(ActionKind.DeclareInitial, InitialKind: kind, Cards: cards));
-        }
-        else if (InteractionActions.CanRequest(view, ActionKind.Claim))
-        {
-            if (!InteractionActions.TryCreate(view, _handState, ActionKind.Claim, false,
-                    out VisualActionRequest? request, out string message))
-            { Message(message); return; }
-            SendRequest(request! with { InitialKind = kind });
-        }
+        if (!CanSend || FindInitialDeclaration() is not { } choice) return;
+        if (!choice.FromOffer) SendInitial(choice.Kind, choice.Cards);
+        else if (InteractionActions.TryCreate(_interactionView!, _handState, ActionKind.Claim, false,
+            out VisualActionRequest? request, out _))
+            SendRequest(request! with { InitialKind = choice.Kind });
     }
 }

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using Desmoche.Application;
+using Desmoche.Domain;
 using Desmoche.Networking.Core;
 
 public static class StateReplicationTests
@@ -48,6 +49,7 @@ public static class StateReplicationTests
         return v with
         {
             Phase = GamePhase.Finished, Result = MatchResult.InitialVictory, WinnerPlayerId = 1,
+            InitialVictory = new InitialVictoryDto(InitialVictoryKind.Color, v.OwnHand.ToArray()),
             RevealedHands = new[] { new RevealedHandDto(1, v.OwnHand.ToArray()),
                 new RevealedHandDto(2, Enumerable.Range(26, 9).ToArray()) }
         };
@@ -64,7 +66,8 @@ public static class StateReplicationTests
         using JsonDocument doc = JsonDocument.Parse(json);
         string[] expected = { "Version", "Session", "Revision", "Window", "Phase", "Result",
             "CurrentPlayerId", "PaymentPlayerId", "WinnerPlayerId", "Players", "Melds",
-            "DeckCount", "DiscardCount", "DiscardTop", "OfferedCard", "RevealedHands" };
+            "DeckCount", "DiscardCount", "DiscardTop", "OfferedCard", "RevealedHands",
+            "ExchangeCount", "OrderChallenge", "OpeningOffer", "InitialVictory" };
         Check(doc.RootElement.EnumerateObject().Select(x => x.Name).OrderBy(x => x)
             .SequenceEqual(expected.OrderBy(x => x)), "Contrato publico con lista exacta de campos.");
         Check(!json.Contains("OwnHand") && !json.Contains("RecipientId") &&

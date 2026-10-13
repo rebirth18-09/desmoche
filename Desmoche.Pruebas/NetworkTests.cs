@@ -245,7 +245,8 @@ public static class NetworkTests
             "Sesion continua con unico conectado");
 
         var finished = Rig(new[] { Enumerable.Range(0, 9).ToArray(), Array.Empty<int>() }, Array.Empty<int>(), ready: false);
-        Accept(finished.Send(1, ActionKind.DeclareInitial, initial: InitialVictoryKind.Color), "Victoria para finalizar sesion");
+        Accept(finished.Raw(1, NetworkProtocol.Encode(finished.Command(1, ActionKind.DeclareInitial,
+            initial: InitialVictoryKind.Color) with { Cards = Enumerable.Range(0, 9).ToArray() })), "Victoria para finalizar sesion");
         finished.Session.Disconnect(finished.Peers[1]);
         Check(finished.View().Phase == GamePhase.Finished && !finished.View().Players[1].Connected, "Desconexion tras finalizar conserva resultado");
         Accept(finished.Send(1, ActionKind.PrepareNextMatch), "Host prepara siguiente partida");
@@ -386,7 +387,8 @@ public static class NetworkTests
         }
         public void PassAll()
         {
-            foreach (long peer in Peers) Accept(Send(peer, ActionKind.Pass), "Respuesta sin reclamo");
+            foreach (long peer in Peers.Where(p => !View(p).OwnResponseSubmitted).ToArray())
+                Accept(Send(peer, ActionKind.Pass), "Respuesta sin reclamo");
         }
     }
     private static PlayDto Play(params int[] cards) => new(cards);

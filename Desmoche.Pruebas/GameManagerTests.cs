@@ -22,7 +22,8 @@ public static class GameManagerTests
         GameState beforeExchange = lobby.State!;
         int choice = beforeExchange.GetPlayer(1).Hand.Cards[0].Id;
         Accept(lobby.SelectExchangeCard(1, choice), "Primera seleccion privada.");
-        Check(ReferenceEquals(lobby.State, beforeExchange), "No intercambia antes de todas las selecciones.");
+        Check(lobby.State!.GetPlayer(1).Hand.Count == 8 && !lobby.State.GetPlayer(1).Hand.Contains(choice) &&
+            beforeExchange.GetPlayer(1).Hand.Count == 9, "La carta confirmada queda reservada fuera de la mano sin modificar el estado anterior.");
         Check(!lobby.SelectExchangeCard(1, choice).Success, "Seleccion repetida rechazada.");
         Check(!lobby.SelectExchangeCard(2, choice).Success, "Carta ajena en intercambio rechazada.");
         var outgoing = new Dictionary<int, int> { [1] = choice };
@@ -103,7 +104,7 @@ public static class GameManagerTests
         int[] winningHand = { C(6), D(6), H(6), S(2), S(3), S(4), S(7), S(8), S(9) };
         var winner = Rig(new[] { winningHand, Array.Empty<int>() },
             new[] { D(1), S(6) });
-        Accept(winner.PublishMelds(1, new[] { Play(C(6), D(6), H(6)),
+        Accept(winner.PublishMelds(1, new[] { Play(D(6), C(6), H(6)),
             Play(S(2), S(3), S(4)), Play(S(7), S(8), S(9)) }),
             "Bajar juegos iniciales durante la partida.");
         Check(winner.State!.GetPlayer(1).Hand.Count == 0 && winner.State.Melds.Count == 3,
@@ -116,7 +117,7 @@ public static class GameManagerTests
         Accept(winner.DrawFromDeck(1), "Carta diez.");
         int setId = winner.State.Melds[0].Id;
         Accept(winner.SubmitClaim(1, new[] {
-            new MeldPlay(new[] { C(6), D(6), H(6), S(6) }, setId) }, true),
+            new MeldPlay(new[] { C(6), D(6), S(6), H(6) }, setId) }, true),
             "Declarar desmoche al extender juego.");
         Accept(winner.PassClaim(2), "Rival pasa.");
         Accept(winner.ResolveClaims(), "Adjudicar victoria.");
@@ -141,28 +142,28 @@ public static class GameManagerTests
             new[] { S(6) });
         Accept(lateDeclaration.DrawFromDeck(1), "Oferta ganadora.");
         Accept(lateDeclaration.SubmitClaim(1, new[] {
-            Play(C(6), D(6), H(6), S(6)), Play(S(2), S(3), S(4)),
+            Play(C(6), D(6), S(6), H(6)), Play(S(2), S(3), S(4)),
             Play(S(7), S(8), S(9)) }), "Jugar sin declarar todavia.");
         Accept(lateDeclaration.PassClaim(2), "Rival pasa.");
         Accept(lateDeclaration.ResolveClaims(), "Jugar las diez.");
-        Check(lateDeclaration.WinnerPlayerId is null, "No gana automaticamente.");
-        Accept(lateDeclaration.DeclareDesmoche(1), "Declaracion explicita antes de pagar.");
+        Check(lateDeclaration.WinnerPlayerId == 1, "Diez cartas ganan automaticamente al jugarse.");
+        Check(!lateDeclaration.DeclareDesmoche(1).Success, "No se repite una victoria ya resuelta.");
         Check(lateDeclaration.WinnerPlayerId == 1, "Declaracion verificada por motor.");
 
-        var initial = Rig(new[] { new[] { H(1), H(2), H(3), H(4) },
-            Array.Empty<int>() }, new[] { H(5) });
+        var initial = Rig(new[] { new[] { H(1), H(2), H(3) },
+            Array.Empty<int>() }, new[] { H(4) });
         Accept(initial.DrawFromDeck(1), "Primera carta completa excepcion.");
-        Accept(initial.SubmitClaim(1, new[] { Play(H(1), H(2), H(3), H(4), H(5)) },
-            initialKind: InitialVictoryKind.LowStraight), "Declarar A2345 con primera carta.");
+        Accept(initial.SubmitClaim(1, new[] { Play(H(1), H(2), H(3), H(4)) },
+            initialKind: InitialVictoryKind.LowStraight), "Declarar A234 con primera carta.");
         Accept(initial.PassClaim(2), "Rival pasa.");
         Accept(initial.ResolveClaims(), "Resolver excepcion inicial.");
         Check(initial.Result == MatchResult.InitialVictory &&
-            initial.State!.GetPlayer(1).Hand.Count == 5, "Excepcion permite cartas sobrantes.");
+            initial.State!.GetPlayer(1).Hand.Count == 6, "Excepcion permite cartas sobrantes.");
         Integrity(initial);
 
         int[] red = { H(1), H(3), H(5), H(7), H(9), D(2), D(4), D(6), D(8) };
         var color = Rig(new[] { red, Array.Empty<int>() }, Array.Empty<int>(), false);
-        Accept(color.DeclareInitialVictory(1, InitialVictoryKind.Color), "Declarar color.");
+        Accept(color.DeclareInitialVictory(1, InitialVictoryKind.Color, red.OrderBy(id => (int)Card.FromId(id).Rank).ToArray()), "Declarar color.");
         Check(color.Phase == GamePhase.Finished && color.State!.Melds.Count == 0,
             "Color gana antes de sacar del mazo.");
 
@@ -211,7 +212,7 @@ public static class GameManagerTests
 
         var reorganize = Rig(new[] { new[] { C(6), D(6), H(6), S(6), S(4), S(5) },
             Array.Empty<int>() }, Array.Empty<int>());
-        Accept(reorganize.PublishMelds(1, new[] { Play(C(6), D(6), H(6), S(6)) }),
+        Accept(reorganize.PublishMelds(1, new[] { Play(C(6), D(6), S(6), H(6)) }),
             "Publicar cuarta donante.");
         int donor = reorganize.State!.Melds[0].Id;
         Accept(reorganize.TransferMeldCard(1, donor, S(6), Play(S(4), S(5), S(6))),
@@ -296,7 +297,7 @@ public static class GameManagerTests
         void PassAll(GameManager game)
         {
             foreach (Player player in game.Players)
-                if (!game.EliminatedPlayers.Contains(player.Id))
+                if (!game.EliminatedPlayers.Contains(player.Id) && !game.HasAnsweredClaim(player.Id))
                     Accept(game.PassClaim(player.Id), "No reclamar.");
             Accept(game.ResolveClaims(), "Cerrar ventana de reclamos.");
         }

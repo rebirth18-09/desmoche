@@ -26,8 +26,11 @@ public static class InteractionActions
         {
             ActionKind.ExchangeCard => view.Phase == GamePhase.InitialExchange &&
                 !view.OwnResponseSubmitted,
-            ActionKind.FinishInitial or ActionKind.DeclareInitial => view.Phase == GamePhase.InitialDeclarations &&
+            ActionKind.FinishInitial => view.Phase == GamePhase.InitialDeclarations && !view.OwnResponseSubmitted,
+            ActionKind.DeclareInitial => view.Phase is GamePhase.InitialExchange or GamePhase.InitialDeclarations &&
                 !view.OwnResponseSubmitted,
+            ActionKind.SayPasa => view.Phase == GamePhase.AwaitingOrderChallenge &&
+                view.OrderChallenge is { } challenge && challenge.PlayerId != view.RecipientId,
             ActionKind.DrawDeck => view.Phase == GamePhase.AwaitingDraw && ownTurn &&
                 view.DeckCount > 0,
             ActionKind.DrawDiscard => view.Phase == GamePhase.AwaitingDraw && ownTurn &&

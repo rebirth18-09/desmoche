@@ -17,6 +17,9 @@ public partial class Mesa
     private VBoxContainer _contextActions = null!;
     private Carta _stagedCard = null!;
     private Label _slotTitle = null!, _slotHint = null!;
+    public const string PasaButtonPath = ContentPath + "PasaButton";
+    private Control? _challengedMeld;
+    private Button _pasaButton = null!;
     private Button _confirmCard = null!, _cancelCard = null!;
     private CheckButton _contextWin = null!;
     private readonly Dictionary<ActionKind, Button> _contextButtons = new();
@@ -68,7 +71,7 @@ public partial class Mesa
             ("DrawDiscardButton", "Tomar pozo", ActionKind.DrawDiscard),
             ("ContinueButton", "Continuar al turno", ActionKind.FinishInitial),
             ("PublishButton", "Confirmar juegos", ActionKind.Publish),
-            ("DesmocheButton", "Declarar desmoche", ActionKind.DeclareDesmoche),
+            ("PasaButton", "Pasa", ActionKind.SayPasa),
             ("NoPaymentButton", "Terminar sin pago", ActionKind.CompleteWithoutPayment)
         })
         {
@@ -77,6 +80,12 @@ public partial class Mesa
             button.Pressed += () => RequestAction(kind);
             _contextButtons.Add(kind, button);
         }
+        _pasaButton = _contextButtons[ActionKind.SayPasa];
+        _contextActions.RemoveChild(_pasaButton);
+        GetNode<Control>(ContentPath.TrimEnd('/')).AddChild(_pasaButton);
+        _pasaButton.Text = "Pasa";
+        _pasaButton.TooltipText = "Tienes tres segundos para señalar este juego.";
+        _pasaButton.ZIndex = 5;
         _contextWin = new CheckButton { Name = "DeclareWin", Text = "Ganar con esta carta" };
         _contextWin.AddThemeFontSizeOverride("font_size", 13);
         _contextWin.Toggled += value => _declareWin.SetPressedNoSignal(value);
@@ -174,7 +183,8 @@ public partial class Mesa
             entry.Value.Visible = allowed;
             entry.Value.Disabled = !CanSend;
         }
-        _contextWin.Visible = _declareWin.Visible;
+        _contextWin.Visible = false;
+        _declareWin.SetPressedNoSignal(false);
         _contextWin.Disabled = !CanSend;
         _contextWin.SetPressedNoSignal(_declareWin.ButtonPressed);
         RefreshInitialDeclarations();

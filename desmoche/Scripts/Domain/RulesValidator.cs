@@ -211,12 +211,13 @@ public static class RulesValidator
 		if (kind == InitialVictoryKind.Color ||
 			kind == InitialVictoryKind.Peladilla)
 		{
-			if (declaredCombination is not null || firstDiscard is not null)
+			if (firstDiscard is not null || kind == InitialVictoryKind.Peladilla && declaredCombination is not null)
 				return Fail(RuleError.InvalidInitialDeclaration);
-
 			bool valid = kind == InitialVictoryKind.Color
-				? initialHand.Cards.All(c =>
-					IsRed(c) == IsRed(initialHand.Cards[0]))
+				? declaredCombination is not null && ValidateCards(declaredCombination).IsValid &&
+					declaredCombination.Count == initialHand.Count &&
+					declaredCombination.All(c => initialHand.Contains(c.Id)) &&
+					IsColor(declaredCombination) && IsAscendingColor(declaredCombination)
 				: IsPeladilla(initialHand.Cards);
 
 			return valid ? Ok() : Fail(RuleError.InvalidInitialDeclaration);
@@ -251,11 +252,11 @@ public static class RulesValidator
 
 			InitialVictoryKind.LowStraight =>
 				IsEscalera(declaredCombination) &&
-				HasRanks(declaredCombination, 1, 2, 3, 4, 5),
+				HasRanks(declaredCombination, 1, 2, 3, 4),
 
 			InitialVictoryKind.HighStraight =>
 				IsEscalera(declaredCombination) &&
-				HasRanks(declaredCombination, 10, 11, 12, 13, 1),
+				HasRanks(declaredCombination, 11, 12, 13, 1),
 
 			_ => false
 		};
@@ -263,18 +264,47 @@ public static class RulesValidator
 		return matches ? Ok() : Fail(RuleError.InvalidInitialDeclaration);
 	}
 
-	private static bool IsRed(Card card) =>
+	public static bool IsRed(Card card) =>
 		card.Suit == Suit.Hearts || card.Suit == Suit.Diamonds;
+
+	public static bool IsColor(IReadOnlyList<Card> cards) => cards.Count > 0 &&
+		cards.All(c => IsRed(c) == IsRed(cards[0]));
+
+	public static bool IsAscendingColor(IReadOnlyList<Card> cards)
+	{
+		bool Ordered(bool high) => cards.Zip(cards.Skip(1), (a, b) =>
+			(high && a.Rank == Rank.Ace ? 14 : (int)a.Rank) <=
+			(high && b.Rank == Rank.Ace ? 14 : (int)b.Rank)).All(x => x);
+		return Ordered(false) || Ordered(true);
+	}
+
+	// La estructura de la tercia/cuarta sigue siendo valida mientras esta abierta
+	// la oportunidad de Pasa. El orden de colores es una regla de declaracion aparte.
+	public static bool HasAlternatingSetOrder(IReadOnlyList<Card> cards) =>
+		!(IsTercia(cards) || IsCuarta(cards)) ||
+		cards.Zip(cards.Skip(1), (a, b) => IsRed(a) != IsRed(b)).All(x => x);
+
+	public static Card[] ArrangeAlternatingSet(IReadOnlyList<Card> cards)
+	{
+		if (!(IsTercia(cards) || IsCuarta(cards)) || HasAlternatingSetOrder(cards)) return cards.ToArray();
+		var red = new Queue<Card>(cards.Where(IsRed).OrderBy(c => c.Id));
+		var black = new Queue<Card>(cards.Where(c => !IsRed(c)).OrderBy(c => c.Id));
+		bool nextRed = red.Count > black.Count || red.Count == black.Count && IsRed(cards[0]);
+		var result = new List<Card>();
+		while (result.Count < cards.Count)
+		{ result.Add((nextRed ? red : black).Dequeue()); nextRed = !nextRed; }
+		return result.ToArray();
+	}
 
 	private static bool HasRanks(
 		IReadOnlyList<Card> cards, params int[] ranks) =>
 		cards.Count == ranks.Length &&
 		cards.Select(c => (int)c.Rank).ToHashSet().SetEquals(ranks);
 
-	private static bool IsPeladilla(IReadOnlyList<Card> cards)
+	public static bool IsPeladilla(IReadOnlyList<Card> cards)
 	{
-		// No hay juego formado ni uno completable con UNA carta.
-		if (cards.GroupBy(c => c.Rank).Any(g => g.Count() >= 2))
+		// Solo se consideran juegos presentes en la mano, sin importar su orden.
+		if (cards.GroupBy(c => c.Rank).Any(g => g.Count() >= 3))
 			return false;
 
 		foreach (Suit suit in Enum.GetValues<Suit>())
@@ -295,7 +325,7 @@ public static class RulesValidator
 						present++;
 				}
 
-				if (present >= 2)
+				if (present == 3)
 					return false;
 			}
 		}

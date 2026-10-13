@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$GodotPath,
     [string]$ProjectPath = (Join-Path $PSScriptRoot '..\desmoche'),
-    [ValidateRange(2,4)][int]$Players = 2
+    [ValidateRange(2,4)][int]$Players = 2,
+    [switch]$SkipBuild
 )
 $ErrorActionPreference = 'Stop'
 $engine = (Resolve-Path -LiteralPath $GodotPath).Path
@@ -9,14 +10,17 @@ $project = (Resolve-Path -LiteralPath $ProjectPath).Path
 if (!(Test-Path -LiteralPath (Join-Path $project 'Scenes\Diagnostics\LobbySmoke.tscn'))) {
     throw 'Falta copiar LobbySmoke.tscn y los archivos de fase 7.'
 }
-& dotnet build (Join-Path $project 'Desmoche.csproj')
-if ($LASTEXITCODE -ne 0) { throw 'La compilación del proyecto falló.' }
+if (!$SkipBuild) {
+    & dotnet build (Join-Path $project 'Desmoche.csproj')
+    if ($LASTEXITCODE -ne 0) { throw 'La compilación del proyecto falló.' }
+}
 $logRoot = Join-Path $PSScriptRoot ('TestResults\Fase7-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 New-Item -ItemType Directory -Path $logRoot -Force | Out-Null
 $processes = @()
+$testRoomCode = 'AAAAAA'
 function Start-LobbyPeer([string]$Role, [string]$Name) {
     $log = Join-Path $logRoot ($Name + '.log')
-    $arguments = '--headless --path "{0}" --log-file "{1}" --scene res://Scenes/Diagnostics/LobbySmoke.tscn -- --mode {2} --players {3} --ip 127.0.0.1 --name {4}' -f $project, $log, $Role, $Players, $Name
+    $arguments = '--headless --path "{0}" --log-file "{1}" --scene res://Scenes/Diagnostics/LobbySmoke.tscn -- --mode {2} --players {3} --code {5} --name {4}' -f $project, $log, $Role, $Players, $Name, $testRoomCode
     $process = Start-Process -FilePath $engine -ArgumentList $arguments -WindowStyle Hidden -PassThru
     return [pscustomobject]@{ Process = $process; Log = $log; Name = $Name }
 }
@@ -35,6 +39,9 @@ try {
         (Get-Content -LiteralPath $hostPeer.Log -Raw) -notmatch 'LOBBY HOST LISTO') {
         throw 'El host no creó la sala en 30 segundos.'
     }
+    $codeMatch = [regex]::Match((Get-Content -LiteralPath $hostPeer.Log -Raw), 'LOBBY CODE: ([A-Z2-9]{6})')
+    if (!$codeMatch.Success) { throw 'El host no publicó su código de sala.' }
+    $testRoomCode = $codeMatch.Groups[1].Value
     for ($i = 2; $i -le $Players; $i++) { $processes += Start-LobbyPeer 'client' ('Jugador' + $i) }
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     while ([DateTime]::UtcNow -lt $deadline) {

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Desmoche.Application;
+using Desmoche.Domain;
 using Desmoche.Networking;
 using Desmoche.Networking.Core;
 using Desmoche.Presentation;
@@ -75,11 +76,11 @@ public partial class SingleplayerSmoke : Control
             _mesa = _main.GetNode<Mesa>("Margin/Screens/Mesa");
             Check(_main.CurrentScreen == "Inicio", "La aplicación comienza en Inicio.");
             CheckOffline("Inicio no abre ENet.");
-            await Press(MenuButton("Singleplayer"));
+            await Press(MenuButton("Jugar contra bots"));
             CheckScreen("Singleplayer");
             Check(!_local.IsActive && _local.View is null, "Abrir el formulario no reparte cartas.");
-            OptionButton counts = Setup<OptionButton>("BotCountInput");
-            OptionButton levels = Setup<OptionButton>("DifficultyInput");
+            MenuChoiceSelector counts = Setup<MenuChoiceSelector>("BotCountInput");
+            MenuChoiceSelector levels = Setup<MenuChoiceSelector>("DifficultyInput");
             Check(counts.ItemCount == 3, "Se ofrecen exactamente 1, 2 o 3 bots.");
             Check(levels.ItemCount == 4, "Se ofrecen cuatro dificultades.");
             LineEdit name = Setup<LineEdit>("NameInput");
@@ -92,10 +93,12 @@ public partial class SingleplayerSmoke : Control
             name.EmitSignal(LineEdit.SignalName.TextChanged, name.Text);
             await Capture("Singleplayer-1600x900.png");
 
+            // Inspecciona el reparto antes de que una elección reduzca la mano a ocho.
+            _local.SetProcess(false);
             for (int level = 0; level < 4; level++)
             for (int count = 0; count < 3; count++)
             {
-                Select(levels, level); Select(counts, count);
+                await Select(levels, level); await Select(counts, count);
                 await Press(Setup<Button>("StartButton"));
                 CheckScreen("Mesa");
                 SnapshotDto view = View();
@@ -125,9 +128,14 @@ public partial class SingleplayerSmoke : Control
             }
 
             // Vuelve a una sesión real para verificar el puente GUI -> comando -> estado.
-            Select(levels, 1); Select(counts, 2);
+            await Select(levels, 1); await Select(counts, 2);
             _local.BotDelayMilliseconds = 150;
             await Press(Setup<Button>("StartButton"));
+            // Semilla solo en el diagnóstico para repetir el recorrido tras el reparto.
+            _local.Close();
+            _local.Start(new LocalMatchOptions("Ricardo", 3, BotDifficulty.Medium), 37);
+            _local.SetProcess(true);
+            await Settle();
             SnapshotDto exchange = View();
             CardDropZone slot = _mesa.GetNode<CardDropZone>(Mesa.CenterPath + "Pago");
             int cardId = exchange.OwnHand[0];
@@ -138,7 +146,7 @@ public partial class SingleplayerSmoke : Control
                 "Soltar prepara la carta sin efectuar el intercambio.");
             await ToSignal(GetTree().CreateTimer(0.8), Timer.SignalName.Timeout);
             Check(_mesa.StagedCardId == cardId,
-                "Las respuestas privadas de bots no borran la carta preparada por el humano.");
+                "Las confirmaciones de bots no borran la carta preparada por el humano.");
             await Capture("Singleplayer-Mesa-4jugadores.png");
             // Congela únicamente este diagnóstico cuando llega la vista inicial,
             // para inspeccionar sus controles antes de que un bot pueda ganar.
@@ -156,15 +164,13 @@ public partial class SingleplayerSmoke : Control
                 "El diagnóstico inspecciona declaraciones antes de que los bots continúen.");
             if (View().Phase == GamePhase.InitialDeclarations)
             {
-                OptionButton initial = _mesa.GetNode<OptionButton>(Mesa.ContextActionsPath + "InitialVictoryType");
-                Check(initial.IsVisibleInTree() && initial.ItemCount == 6,
-                    "Las cinco victorias iniciales están disponibles para el humano.");
-                Select(initial, 4);
-                Check(_mesa.GetNode<Button>(Mesa.ContextActionsPath + "DeclareInitialButton").IsVisibleInTree() &&
-                    !View().OwnResponseSubmitted,
-                    "Elegir Color prepara la declaración sin enviarla ni alterar la partida.");
+                Check(!_mesa.HasNode(Mesa.ContextActionsPath + "InitialVictoryType"),
+                    "No hay selector de victorias: los botones dependen de la mano.");
+                Check(_mesa.GetNode<Button>(Mesa.ContextActionsPath + "ColorButton").IsVisibleInTree() ==
+                    RulesValidator.IsColor(View().OwnHand.Select(Card.FromId).ToArray()),
+                    "Color aparece únicamente con nueve cartas del mismo color.");
+                Check(!View().OwnResponseSubmitted, "Mostrar declaraciones no las envía automáticamente.");
                 await Capture("Singleplayer-DeclaracionInicial.png");
-                Select(initial, 0);
                 Button next = _mesa.GetNode<Button>(Mesa.ContextActionsPath + "ContinueButton");
                 if (next.IsVisibleInTree() && !next.Disabled) await Press(next);
                 _local.SetProcess(true);
@@ -201,7 +207,7 @@ public partial class SingleplayerSmoke : Control
                 "Cerrar descarta el comando pendiente sin emitir una respuesta antigua.");
             CheckScreen("Singleplayer");
 
-            foreach (Vector2I size in new[] { new Vector2I(640, 480), new Vector2I(976, 874) })
+            foreach (Vector2I size in new[] { new Vector2I(1100, 800), new Vector2I(640, 480), new Vector2I(976, 874) })
             {
                 _viewport.Size = size;
                 await Settle();
@@ -286,6 +292,14 @@ public partial class SingleplayerSmoke : Control
     private T Setup<T>(string name) where T : Node => _main.GetNode<T>(SetupPath + name);
     private Button MenuButton(string text) => Descendants(_main.GetNode("Margin/Screens/MenuPrincipal"))
         .OfType<Button>().Single(button => button.Text == text);
+    private async Task Select(MenuChoiceSelector button, int index)
+    {
+        await Press(button.GetChoice(index));
+        Check(button.Selected == index, "La opción visible selecciona su ID real.");
+        for (int i = 0; i < button.ItemCount; i++)
+            Check(button.GetChoice(i).ButtonPressed == (i == index), "La selección permanece exclusiva.");
+    }
+
     private static void Select(OptionButton button, int index)
     {
         button.Select(index);

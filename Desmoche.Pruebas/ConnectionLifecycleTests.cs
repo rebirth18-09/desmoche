@@ -149,7 +149,8 @@ public static class ConnectionLifecycleTests
 
         int[] red = { 26, 28, 30, 32, 34, 14, 16, 18, 20 };
         var finished = Rig(new[] { red, Array.Empty<int>(), Array.Empty<int>() }, Array.Empty<int>(), false);
-        Accept(finished.DeclareInitialVictory(1, InitialVictoryKind.Color), "Finalizar por color");
+        Accept(finished.DeclareInitialVictory(1, InitialVictoryKind.Color,
+            red.OrderBy(id => (int)Card.FromId(id).Rank).ToArray()), "Finalizar por color");
         GameState end = finished.State!;
         Accept(finished.DisconnectPlayer(2), "Salida tras finalizar");
         Check(ReferenceEquals(end, finished.State) && finished.WinnerPlayerId == 1,
@@ -193,7 +194,7 @@ public static class ConnectionLifecycleTests
         void PassAll(GameManager game)
         {
             foreach (Player p in game.Players)
-                if (!game.EliminatedPlayers.Contains(p.Id) && !game.DisconnectedPlayers.Contains(p.Id))
+                if (!game.EliminatedPlayers.Contains(p.Id) && !game.DisconnectedPlayers.Contains(p.Id) && !game.HasAnsweredClaim(p.Id))
                     Accept(game.PassClaim(p.Id), "Pasar");
             Accept(game.ResolveClaims(), "Resolver");
         }

@@ -1,3 +1,7 @@
+> Revisión posterior 12/10/2026: [VictoriasVisiblesYPagos.md](VictoriasVisiblesYPagos.md) actualiza el plazo y ubicación de Pasa, muestra la evidencia de victoria y excluye al pagador de su oferta. Protocolo actual: 4.
+
+> Actualización 12/10/2026: las reglas de victoria, intercambio, Pasa y acceso por código se detallan en [RevisionReglasCodigoSala.md](RevisionReglasCodigoSala.md). Esa revisión prevalece sobre las instrucciones históricas de este documento.
+
 # Mesa dinámica — contrato de presentación de las fases 8 y 9
 
 ## 1. Objetivo de la fase

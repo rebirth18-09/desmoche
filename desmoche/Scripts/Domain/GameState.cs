@@ -14,6 +14,8 @@ public sealed class GameState
 	private readonly DiscardPile _discardPile;
 	private readonly Meld[] _melds;
 	private readonly int _nextMeldId;
+	private readonly Dictionary<int, Card> _exchangeCards;
+	public int ExchangeCount => _exchangeCards.Count;
 
 	// Estado completo: solo codigo confiable. Para presentacion usar una vista.
 	public IReadOnlyList<Player> Players { get; }
@@ -25,13 +27,14 @@ public sealed class GameState
 	public bool InitialHandsDealt { get; }
 
 	private GameState(Player[] players, Deck deck, DiscardPile discardPile,
-		bool dealt, Meld[]? melds = null, Card? offered = null, int nextMeldId = 1)
+		bool dealt, Meld[]? melds = null, Card? offered = null, int nextMeldId = 1, IReadOnlyDictionary<int, Card>? exchangeCards = null)
 	{
 		_players = (Player[])players.Clone();
 		_deck = deck;
 		_discardPile = discardPile;
 		_melds = melds is null ? Array.Empty<Meld>() : (Meld[])melds.Clone();
 		_nextMeldId = nextMeldId;
+		_exchangeCards = exchangeCards is null ? new() : new(exchangeCards);
 		OfferedCard = offered;
 		InitialHandsDealt = dealt;
 		Players = Array.AsReadOnly(_players);
@@ -45,6 +48,7 @@ public sealed class GameState
 		var zones = _deck.CardsForValidation
 			.Concat(_discardPile.CardsForValidation)
 			.Concat(_players.SelectMany(p => p.Hand.Cards))
+			.Concat(_exchangeCards.Values)
 			.Concat(_melds.SelectMany(m => m.Cards))
 			.Concat(offered is null ? Array.Empty<Card>() : new[] { offered });
 		if (Card.CopyDistinct(zones).Length != Card.StandardDeckSize)
@@ -107,30 +111,33 @@ public sealed class GameState
 			pile: _discardPile.Add(card));
 	}
 
-	internal GameState ExchangeInitialCards(IReadOnlyDictionary<int, int> selections)
+	internal GameState ReserveExchangeCard(int playerId, int cardId)
 	{
 		EnsureDealt();
-		if (selections.Count != _players.Length || _melds.Length != 0 ||
-			OfferedCard is not null)
-			throw new ArgumentException("Intercambio inicial incompleto.");
-		var outgoing = new Card[_players.Length];
-		var hands = new PlayerHand[_players.Length];
-		for (int i = 0; i < _players.Length; i++)
-		{
-			Player player = _players[i];
-			if (player.Hand.Count != 9 || !selections.TryGetValue(player.Id, out int id))
-				throw new ArgumentException("Cada jugador debe tener nueve cartas y elegir una.");
-			outgoing[i] = player.Hand.Cards.FirstOrDefault(c => c.Id == id)
-				?? throw new InvalidOperationException("Carta ajena en intercambio.");
-			hands[i] = player.Hand.Remove(id);
-		}
-		for (int i = 0; i < _players.Length; i++)
-		{
-			int right = (i + 1) % _players.Length;
-			hands[right] = hands[right].Add(outgoing[i]);
-		}
-		return Copy(players: _players.Select((p, i) => p.WithHand(hands[i])).ToArray());
+		PlayerHand hand = GetPlayer(playerId).Hand;
+		if (_exchangeCards.ContainsKey(playerId) || hand.Count != InitialHandSize || _melds.Length != 0)
+			throw new InvalidOperationException("Intercambio inicial invalido.");
+		Card card = hand.Cards.Single(c => c.Id == cardId);
+		var held = new Dictionary<int, Card>(_exchangeCards) { [playerId] = card };
+		return Copy(players: WithHand(playerId, hand.Remove(cardId)), exchangeCards: held);
 	}
+
+	internal GameState CompleteInitialExchange()
+	{
+		if (_exchangeCards.Count != _players.Length)
+			throw new InvalidOperationException("Faltan cartas para completar el intercambio.");
+		Player[] players = _players.Select((p, i) => p.WithHand(p.Hand.Add(
+			_exchangeCards[_players[(i + _players.Length - 1) % _players.Length].Id]))).ToArray();
+		return Copy(players: players, exchangeCards: new Dictionary<int, Card>());
+	}
+
+	internal GameState CancelInitialExchange() => Copy(
+		players: _players.Select(p => _exchangeCards.TryGetValue(p.Id, out Card? card)
+			? p.WithHand(p.Hand.Add(card)) : p).ToArray(), exchangeCards: new Dictionary<int, Card>());
+
+	internal GameState NormalizeSetOrder(int playerId) => Copy(melds: _melds.Select(m =>
+		m.OwnerPlayerId == playerId ? new Meld(m.Id, playerId,
+			RulesValidator.ArrangeAlternatingSet(m.Cards)) : m).ToArray());
 
 	internal GameState OfferDeckTop()
 	{
@@ -229,10 +236,11 @@ public sealed class GameState
 
 	private GameState Copy(Player[]? players = null, Deck? deck = null,
 		DiscardPile? pile = null, Meld[]? melds = null, bool? dealt = null,
-		Card? offered = null, bool replaceOffer = false, int? nextMeldId = null) =>
+		Card? offered = null, bool replaceOffer = false, int? nextMeldId = null,
+		IReadOnlyDictionary<int, Card>? exchangeCards = null) =>
 		new(players ?? _players, deck ?? _deck, pile ?? _discardPile,
 			dealt ?? InitialHandsDealt, melds ?? _melds,
-			replaceOffer ? offered : OfferedCard, nextMeldId ?? _nextMeldId);
+			replaceOffer ? offered : OfferedCard, nextMeldId ?? _nextMeldId, exchangeCards ?? _exchangeCards);
 
 	private Player[] WithHand(int id, PlayerHand hand)
 	{

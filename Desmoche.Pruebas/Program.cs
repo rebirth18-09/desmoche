@@ -1,5 +1,8 @@
 using Desmoche.Domain;
 
+try
+{
+RuleRevisionTests.Run();
 RulesTests.Run();
 GameManagerTests.Run();
 ConnectionLifecycleTests.Run();
@@ -165,4 +168,11 @@ void Expect<T>(Action action, string description)
 
     throw new Exception(
         $"FALLO: {description} Se esperaba {typeof(T).Name}.");
+}
+
+}
+catch (Exception error)
+{
+    Console.Error.WriteLine(error);
+    Environment.ExitCode = 1;
 }

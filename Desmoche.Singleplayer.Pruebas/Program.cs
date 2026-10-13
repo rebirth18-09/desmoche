@@ -9,6 +9,7 @@ internal static class Program
     private static int _checks;
     private static int _games;
     private static readonly Dictionary<MatchResult, int> Results = new();
+    private static readonly Dictionary<InitialVictoryKind, int> InitialResults = new();
     private static readonly HashSet<ActionKind> Actions = new();
     private static readonly HashSet<GamePhase> Phases = new();
     private static readonly List<double> DecisionTimes = new();
@@ -39,6 +40,7 @@ internal static class Program
         {
             var timer = Stopwatch.StartNew();
             UnitChecks();
+            NormalTurnScenarios();
             int seedCount = args.Contains("--quick") ? 1 : 12;
             foreach (BotDifficulty difficulty in Enum.GetValues<BotDifficulty>())
             {
@@ -47,6 +49,8 @@ internal static class Program
                         Simulate(difficulty, bots, 2718 + seed * 97 + bots * 11, seed == 0);
                 Console.WriteLine($"OK: {LocalMatchOptions.DifficultyName(difficulty)}, 2–4 jugadores, {seedCount} semillas por tamaño.");
             }
+            Console.WriteLine("RESULTADOS: " + string.Join(", ", Results.Select(r => $"{r.Key}={r.Value}")));
+            Console.WriteLine("VICTORIAS INICIALES: " + string.Join(", ", InitialResults.Select(r => $"{r.Key}={r.Value}")));
             Check(Results.GetValueOrDefault(MatchResult.Desmoche) > 0, "Las simulaciones alcanzan desmoche normal.");
             Check(Results.GetValueOrDefault(MatchResult.Draw) > 0, "Las simulaciones agotan el mazo y terminan empatadas.");
             Check(Phases.Contains(GamePhase.AwaitingPayment), "Las simulaciones pagan tras reclamar.");
@@ -125,9 +129,9 @@ internal static class Program
                 action = brain.Decide(View(cards, GamePhase.InitialDeclarations))!;
                 Check(action.Kind == ActionKind.DeclareInitial && action.InitialKind == kind, "Victoria inicial " + kind);
             }
-            SnapshotDto initialOffer = View(new[] { 0, 1, 2, 3, 19, 25, 30, 36, 47 }, offer: 4);
+            SnapshotDto initialOffer = View(new[] { 0, 1, 2, 8, 19, 25, 30, 36, 47 }, offer: 3);
             action = brain.Decide(initialOffer, new(true, false))!;
-            Check(action.InitialKind == InitialVictoryKind.LowStraight, "Primera oferta permite victoria inicial con cinco cartas.");
+            Check(action.InitialKind == InitialVictoryKind.LowStraight, "Primera oferta permite victoria inicial con cuatro cartas.");
             Check(brain.Decide(initialOffer)!.InitialKind is null, "Ofertas siguientes no declaran victoria inicial.");
 
             // Datos de otra mano revelada no influyen; no hay parámetro para orden del mazo.
@@ -168,8 +172,14 @@ internal static class Program
         original.Players[0] = original.Players[0] with { CardCount = 500 };
         Check(local.View.OwnHand.All(id => id >= 0) && local.View.Players[0].CardCount == 9, "Vista defensiva.");
         long revision = local.View.Revision;
-        Check(!local.Tick(1000) && local.View.Revision == revision, "Elegir intercambio de un bot no interrumpe interacción humana.");
-        Check(!local.Tick(2000) && local.View.Revision == revision, "Segundo intercambio privado tampoco cambia la revisión expuesta.");
+        long exchangeWindow = local.View.Window;
+        int[] humanHand = local.View.OwnHand;
+        Check(local.Tick(1000) && local.View.Revision > revision && local.View.Window == exchangeWindow &&
+            local.View.OwnHand.SequenceEqual(humanHand) && local.View.Players.Count(p => p.CardCount == 8) == 1,
+            "El primer bot muestra ocho cartas sin cambiar la mano ni la oportunidad del humano.");
+        Check(local.Tick(2000) && local.View.Window == exchangeWindow &&
+            local.View.OwnHand.SequenceEqual(humanHand) && local.View.Players.Count(p => p.CardCount == 8) == 2,
+            "El segundo bot confirma su carta sin cancelar la interacción humana.");
         ReplyDto wrong = local.Submit(new BotAction(ActionKind.Pay, 51).ToCommand(local.View, local.NextHumanRequestId), 3000);
         Check(!wrong.Success && !wrong.Penalized, "Acción fuera de fase validada por la autoridad.");
         int foreign = Enumerable.Range(0, 52).First(id => !local.View.OwnHand.Contains(id));
@@ -187,6 +197,64 @@ internal static class Program
         Check(local.View.Revision == beforeClose.Revision, "Cerrar conserva la última vista sin mutaciones tardías.");
         Throws<InvalidOperationException>(() => local.Restart(9001), "No reiniciar una sesión cerrada.");
         Console.WriteLine("OK: contratos, privacidad, reglas, decisiones, cierre y configuraciones inválidas.");
+    }
+
+    // Escenarios fijados: las victorias iniciales ahora son frecuentes y no
+    // deben dejar sin cobertura las decisiones de turnos normales.
+    private static void NormalTurnScenarios()
+    {
+        (ServerSession Server, Func<int, BotAction, ReplyDto> Send) Fixture(bool completeHand = true)
+        {
+            int[][] hands = { new[] { 5, 6, 7, 18, 19, 20, 31, 32, 33 }, Enumerable.Range(39, 9).ToArray() };
+            if (!completeHand) hands[0][6] = 12;
+            int[][] before = { hands[0].Skip(1).Append(hands[1][0]).ToArray(),
+                hands[1].Skip(1).Append(hands[0][0]).ToArray() };
+            int[] deal = Enumerable.Range(0, 9).SelectMany(i => new[] { before[0][i], before[1][i] }).ToArray();
+            // K de corazones al fondo: no puede encajar en ninguna mano al agotar el mazo.
+            int[] draws = deal.Append(34).Concat(Enumerable.Range(0, 52).Except(deal).Except(new[] { 34, 38 })).Append(38).ToArray();
+            var server = new ServerSession("Persona", () => new Deck(draws.Reverse().Select(Card.FromId)));
+            Check(server.Join(2, NetworkProtocol.Version, "Bot", out _), "Escenario normal admite al bot.");
+            long[] requests = new long[3]; long clock = 0;
+            ReplyDto Send(int peer, BotAction action) => server.Receive(peer,
+                NetworkProtocol.Encode(action.ToCommand(server.ViewFor(peer), ++requests[peer])), clock += 1001);
+            Check(Send(1, new(ActionKind.StartMatch)).Success, "Escenario normal reparte.");
+            for (int peer = 1; peer <= 2; peer++)
+                Check(Send(peer, new(ActionKind.ExchangeCard, before[peer - 1][^1])).Success, "Intercambio de escenario.");
+            // Continuar es una decisión válida aun si se podría declarar victoria inicial.
+            for (int peer = 1; peer <= 2; peer++)
+                Check(Send(peer, new(ActionKind.FinishInitial)).Success, "Jugador decide continuar a turnos normales.");
+            return (server, Send);
+        }
+
+        var winner = Fixture();
+        Check(winner.Send(1, new(ActionKind.DrawDeck)).Success, "Décima carta ofrecida.");
+        BotAction claim = new BotBrain(BotDifficulty.Expert, 37).Decide(winner.Server.ViewFor(1))!;
+        Check(claim.Kind == ActionKind.Claim && claim.Plays!.Sum(p => p.Cards.Length) == 10,
+            "El bot encuentra diez cartas combinadas usando solo su vista.");
+        Check(winner.Send(1, claim with { DeclareWin = false }).Success &&
+            winner.Send(2, new(ActionKind.Pass)).Success, "Reclamo sin bandera de victoria.");
+        Check(winner.Server.ViewFor(1).Result == MatchResult.Desmoche, "Autoridad adjudica victoria normal automática al bot.");
+        Results[MatchResult.Desmoche] = 1; _games++; Actions.Add(ActionKind.Claim);
+
+        var payment = Fixture(false);
+        Check(payment.Send(1, new(ActionKind.DrawDeck)).Success &&
+            payment.Send(1, new(ActionKind.Claim, Plays: new[] { new PlayDto(new[] { 32, 33, 34 }) })).Success &&
+            payment.Send(2, new(ActionKind.Pass)).Success, "Un reclamo parcial requiere pago.");
+        Check(payment.Server.ViewFor(1).Phase == GamePhase.AwaitingPayment, "Se conserva la fase de pago.");
+        Phases.Add(GamePhase.AwaitingPayment);
+        var payer = new BotBrain(BotDifficulty.Expert, 39);
+        for (int step = 0; step < 4 && payment.Server.ViewFor(1).Phase == GamePhase.AwaitingPayment; step++)
+            Check(payment.Send(1, payer.Decide(payment.Server.ViewFor(1))!).Success, "Bot publica o paga con reglas actuales.");
+        Check(payment.Server.ViewFor(1).Phase == GamePhase.AwaitingClaims, "El pago del bot produce otra oferta.");
+
+        var draw = Fixture();
+        for (int step = 0; step < 40 && draw.Server.ViewFor(1).Phase != GamePhase.Finished; step++)
+        {
+            Check(draw.Send(draw.Server.ViewFor(1).CurrentPlayerId!.Value, new(ActionKind.DrawDeck)).Success, "Robo hasta agotar.");
+            Check(draw.Send(1, new(ActionKind.Pass)).Success && draw.Send(2, new(ActionKind.Pass)).Success, "Ambos dejan pasar.");
+        }
+        Check(draw.Server.ViewFor(1).Result == MatchResult.Draw, "Mazo agotado y pozo inutilizable terminan en empate.");
+        Results[MatchResult.Draw] = 1; _games++;
     }
 
     private static void Simulate(BotDifficulty difficulty, int botCount, int seed, bool replay)
@@ -221,14 +289,36 @@ internal static class Program
                 Check(match.BotRejectedActions == 0, "Bot rechazado: " + match.LastBotError);
                 Check(view.Result != MatchResult.None, "Resultado al finalizar.");
                 Check(!match.Tick(now + 1000), "No hay turnos de bots tras finalizar.");
+                if (view.Result == MatchResult.InitialVictory)
+                {
+                    InitialVictoryDto proof = view.InitialVictory!;
+                    Check(proof is not null && StateProjection.IsValidPublic(StateProjection.Public(view)),
+                        "Toda victoria inicial tiene causa y cartas autorizadas para la mesa.");
+                    InitialResults[proof!.Kind] = InitialResults.GetValueOrDefault(proof.Kind) + 1;
+                    if (proof.Kind == InitialVictoryKind.Peladilla)
+                    {
+                        // Comprobacion independiente de IsPeladilla: todas las ternas posibles.
+                        bool meld = false;
+                        for (int a = 0; a < 7; a++) for (int b = a + 1; b < 8; b++) for (int c = b + 1; c < 9; c++)
+                        {
+                            int[] ids = { proof.Cards[a], proof.Cards[b], proof.Cards[c] };
+                            bool set = ids.Select(id => id % 13).Distinct().Count() == 1;
+                            int[] low = ids.Select(id => id % 13 + 1).Order().ToArray();
+                            int[] high = low.Select(rank => rank == 1 ? 14 : rank).Order().ToArray();
+                            bool consecutive = low[2] - low[0] == 2 || high[2] - high[0] == 2;
+                            meld |= set || ids.Select(id => id / 13).Distinct().Count() == 1 && consecutive;
+                        }
+                        Check(!meld, "Peladilla ganadora no oculta ninguna tercia o escalera.");
+                    }
+                }
                 if (view.Result == MatchResult.Desmoche)
                     Check(view.Melds.Where(m => m.OwnerId == view.WinnerPlayerId).Sum(m => m.Cards.Length) == 10 &&
                         view.Players.Single(p => p.Id == view.WinnerPlayerId).CardCount == 0, "Ganador: diez combinadas y ninguna suelta.");
                 return string.Join("|", trace);
             }
-            Check(view.OwnHand.Distinct().Count() == view.OwnHand.Length && view.RevealedHands.Length == 0, "Solo mano propia única mientras se juega.");
+            Check(view.OwnHand.Distinct().Count() == view.OwnHand.Length && view.RevealedHands.Length == 0 && view.InitialVictory is null, "Solo mano propia única mientras se juega.");
             int cardCount = view.Players.Sum(p => p.CardCount) + view.Melds.Sum(m => m.Cards.Length) +
-                view.DeckCount + view.DiscardCount + (view.OfferedCard is null ? 0 : 1);
+                view.DeckCount + view.DiscardCount + view.ExchangeCount + (view.OfferedCard is null ? 0 : 1);
             Check(cardCount == 52, $"Conservación de cartas: {cardCount}.");
             Check(view.Melds.All(m => RulesValidator.ValidateMeld(m.Cards.Select(Card.FromId).ToArray()).IsValid), "Todos los juegos publicados son válidos.");
             long stamp = Stopwatch.GetTimestamp();

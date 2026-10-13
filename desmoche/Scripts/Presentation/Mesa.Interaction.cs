@@ -103,9 +103,11 @@ public partial class Mesa
         if (contextChanged)
         {
             _declareWin.SetPressedNoSignal(false);
-            _initialVictoryType.Select(0);
         }
-        if (contextChanged || previous?.Revision != view?.Revision) _stagedCardId = null;
+        // Las confirmaciones ajenas actualizan sus contadores (9 -> 8), pero no
+        // invalidan nuestra carta pendiente. RefreshDynamicInteraction comprueba
+        // que siga en la mano, sin asignar y permitida por la fase actual.
+        if (contextChanged) _stagedCardId = null;
         _handState.Synchronize(view);
         _interactionView = view;
         PopulateTargets();
@@ -362,6 +364,8 @@ public partial class Mesa
 
     public override void _Process(double delta)
     {
+        // FlowContainer coloca las cartas de forma diferida; seguir sus límites visibles.
+        if (_ready && _casinoInitialized) PositionPasaButton();
         if (_pendingRequest == 0 || Time.GetTicksMsec() < _pendingUntil) return;
         _pendingRequest = 0;
         Message("No se recibio confirmacion. La mesa conserva el estado recibido del servidor; revisa la conexion antes de volver a intentar.");

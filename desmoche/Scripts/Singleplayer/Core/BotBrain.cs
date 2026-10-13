@@ -17,6 +17,7 @@ public sealed class BotBrain
     private readonly BotDifficulty _difficulty;
     private readonly Random _random;
     private readonly HashSet<int> _seenPublic = new();
+    private long _lastPasaOpportunity;
     public const int MaximumSearchStates = 8192;
     public int LastSearchStates { get; private set; }
 
@@ -27,7 +28,7 @@ public sealed class BotBrain
         _random = new Random(seed);
     }
 
-    public void Reset() => _seenPublic.Clear();
+    public void Reset() { _seenPublic.Clear(); _lastPasaOpportunity = 0; }
 
     public void Observe(SnapshotDto view)
     {
@@ -46,9 +47,18 @@ public sealed class BotBrain
         if (self is null || self.Eliminated || !self.Connected ||
             view.Phase is GamePhase.Preparing or GamePhase.Finished) return null;
 
+        if (view.Phase == GamePhase.AwaitingOrderChallenge)
+        {
+            if (view.OrderChallenge is not { } challenge || challenge.PlayerId == view.RecipientId ||
+                challenge.Id == _lastPasaOpportunity) return null;
+            _lastPasaOpportunity = challenge.Id;
+            double attention = _difficulty switch { BotDifficulty.Easy => 0.2, BotDifficulty.Medium => 0.5,
+                BotDifficulty.Hard => 0.8, _ => 1.0 };
+            return _random.NextDouble() < attention ? new BotAction(ActionKind.SayPasa) : null;
+        }
         if (view.Phase == GamePhase.InitialExchange)
             return view.OwnResponseSubmitted ? null :
-                new BotAction(ActionKind.ExchangeCard, SelectPayment(view));
+                FindInitialVictory(view, beforeExchange: true) ?? new BotAction(ActionKind.ExchangeCard, SelectPayment(view));
 
         if (view.Phase == GamePhase.InitialDeclarations)
             return view.OwnResponseSubmitted ? null :
@@ -98,15 +108,18 @@ public sealed class BotBrain
         return new BotAction(kind, Plays: plan.Plays, DeclareWin: win);
     }
 
-    private BotAction? FindInitialVictory(SnapshotDto view, int? offer = null)
+    private BotAction? FindInitialVictory(SnapshotDto view, int? offer = null, bool beforeExchange = false)
     {
         if (view.OwnHand.Length != GameState.InitialHandSize) return null;
         var hand = new PlayerHand(view.OwnHand.Select(Card.FromId));
-        if (offer is null)
+        if (offer is null && !beforeExchange)
         {
-            foreach (InitialVictoryKind kind in new[] { InitialVictoryKind.Color, InitialVictoryKind.Peladilla })
-                if (RulesValidator.ValidateInitialVictory(hand, kind).IsValid)
-                    return new BotAction(ActionKind.DeclareInitial, InitialKind: kind);
+            Card[] orderedHand = hand.Cards.OrderBy(c => (int)c.Rank).ThenBy(c => c.Id).ToArray();
+            if (RulesValidator.ValidateInitialVictory(hand, InitialVictoryKind.Color, orderedHand).IsValid)
+                return new BotAction(ActionKind.DeclareInitial, InitialKind: InitialVictoryKind.Color,
+                    Cards: orderedHand.Select(c => c.Id).ToArray());
+            if (RulesValidator.ValidateInitialVictory(hand, InitialVictoryKind.Peladilla).IsValid)
+                return new BotAction(ActionKind.DeclareInitial, InitialKind: InitialVictoryKind.Peladilla);
         }
         int[] cards = (offer is int id ? view.OwnHand.Append(id) : view.OwnHand).OrderBy(id => id).ToArray();
         foreach (Candidate candidate in Candidates(cards, Array.Empty<MeldDto>()))
@@ -115,6 +128,7 @@ public sealed class BotBrain
             foreach (InitialVictoryKind kind in new[]
                      { InitialVictoryKind.Cuarta, InitialVictoryKind.LowStraight, InitialVictoryKind.HighStraight })
             {
+                if (beforeExchange && kind == InitialVictoryKind.Cuarta) continue;
                 if (!RulesValidator.ValidateInitialVictory(hand, kind,
                         candidate.Play.Cards.Select(Card.FromId).ToArray(),
                         offer is int offered ? Card.FromId(offered) : null).IsValid) continue;
@@ -262,7 +276,7 @@ public sealed class BotBrain
         Card[] cards = ids.Select(Card.FromId).ToArray();
         if (cards.Length is < 3 or > 13) return null;
         Card[] low = cards.OrderBy(c => (int)c.Rank).ThenBy(c => (int)c.Suit).ToArray();
-        if (RulesValidator.ValidateMeld(low).IsValid) return low.Select(c => c.Id).ToArray();
+        if (RulesValidator.ValidateMeld(low).IsValid) return RulesValidator.ArrangeAlternatingSet(low).Select(c => c.Id).ToArray();
         Card[] high = cards.OrderBy(c => c.Rank == Rank.Ace ? 14 : (int)c.Rank).ThenBy(c => (int)c.Suit).ToArray();
         return RulesValidator.ValidateMeld(high).IsValid ? high.Select(c => c.Id).ToArray() : null;
     }

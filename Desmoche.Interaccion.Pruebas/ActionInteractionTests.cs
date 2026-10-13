@@ -18,6 +18,7 @@ public static class ActionInteractionTests
         CheckRequests();
         CheckAuthoritativeEngine();
         CheckServerRequests();
+        CheckInitialPresentation();
         Console.WriteLine($"OK: solicitudes visuales y validacion autoritativa ({_checks} comprobaciones).");
         return _checks;
     }
@@ -33,7 +34,7 @@ public static class ActionInteractionTests
             {
                 bool expected = phase switch
                 {
-                    GamePhase.InitialExchange => kind == ActionKind.ExchangeCard,
+                    GamePhase.InitialExchange => kind is ActionKind.ExchangeCard or ActionKind.DeclareInitial,
                     GamePhase.InitialDeclarations => kind is ActionKind.FinishInitial or ActionKind.DeclareInitial,
                     GamePhase.AwaitingDraw => kind is ActionKind.DrawDeck or
                         ActionKind.DrawDiscard or ActionKind.Publish,
@@ -235,8 +236,34 @@ public static class ActionInteractionTests
         var valid = pay with { RequestId = 5, Kind = ActionKind.ExchangeCard };
         reply = server.Receive(77, NetworkProtocol.Encode(valid), 6000);
         Check(reply.Success && server.ViewFor(77).OwnResponseSubmitted,
-            "La seleccion valida solo cambia la marca de respuesta hasta completar el intercambio.");
-        Check(server.ViewFor(77).OwnHand.Contains(ownCard), "La carta no desaparece por una aceptacion parcial del intercambio.");
+            "La selección válida confirma la respuesta del jugador.");
+        Check(!server.ViewFor(77).OwnHand.Contains(ownCard) && server.ViewFor(77).OwnHand.Length == 8,
+            "La carta desaparece al confirmar y espera en la reserva del intercambio.");
+    }
+
+    private static void CheckInitialPresentation()
+    {
+        int[] unordered = { 0, 14, 2, 26, 1, 45, 3, 22, 50 };
+        Check(InitialHandPresentation.FindOrderedVictory(unordered, false) is null,
+            "A234 separada no muestra Desmoche hasta ordenar la mano.");
+        int[] ordered = { 0, 1, 2, 3, 14, 26, 45, 22, 50 };
+        Check(InitialHandPresentation.FindOrderedVictory(ordered, false)?.Kind == InitialVictoryKind.LowStraight,
+            "A234 ordenada habilita Desmoche antes del cambio.");
+        Check(InitialHandPresentation.FindOrderedVictory(ordered, true)?.Kind == InitialVictoryKind.LowStraight,
+            "A234 ordenada habilita Desmoche después del cambio.");
+        Check(!InitialHandPresentation.HasVisibleMeld(unordered.Select(Card.FromId).ToArray()) &&
+            !RulesValidator.IsPeladilla(unordered.Select(Card.FromId).ToArray()),
+            "Un juego oculto permite mostrar Peladilla pero el servidor rechaza la declaración.");
+        Check(InitialHandPresentation.HasVisibleMeld(ordered.Select(Card.FromId).ToArray()),
+            "Un juego visible oculta Peladilla.");
+        SnapshotDto challenge = View() with { Phase = GamePhase.AwaitingOrderChallenge,
+            OrderChallenge = new OrderChallengeDto(2, 1, 2000) };
+        Check(InteractionActions.CanRequest(challenge, ActionKind.SayPasa), "Pasa disponible para el rival.");
+        Check(!InteractionActions.CanRequest(challenge with { RecipientId = 2 }, ActionKind.SayPasa),
+            "El infractor no puede presionar Pasa sobre su propio juego.");
+        Check(!InteractionActions.CanRequest(challenge with { Players = challenge.Players.Select(p =>
+            p.Id == 1 ? p with { Eliminated = true } : p).ToArray() }, ActionKind.SayPasa),
+            "Un eliminado no participa en la oportunidad de Pasa.");
     }
 
     private static GameManager PlayingGame()

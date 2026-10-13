@@ -7,7 +7,7 @@ El proyecto se construye por fases. El contrato para continuar el trabajo está 
 ## Estado actual
 
 - Modelo de dominio, validación determinista y máquina de estados de partida.
-- Multijugador ENet con host autoritativo, lobby por IP, límite de cuatro jugadores y gestión de desconexiones.
+- Multijugador ENet con host autoritativo, lobby por código LAN, límite de cuatro jugadores y gestión de desconexiones.
 - Réplica pública mediante `MultiplayerSpawner`/`MultiplayerSynchronizer` y manos privadas por destinatario.
 - Pantalla de carga, menú de inicio y formularios de crear/unirse a sala.
 - Mesa compartida, cartas visuales, selección múltiple, orden por arrastre, preparación de combinaciones y pago con confirmación.
@@ -48,7 +48,7 @@ Desde PowerShell en la raíz del repositorio también puedes compilar:
 dotnet build .\desmoche\Desmoche.csproj
 ```
 
-Singleplayer funciona sin conexión: elige nombre, dificultad y cantidad de bots. Para LAN, el host crea una sala; los demás introducen su **IP local** desde Buscar sala. Todos deben usar la misma revisión del proyecto y estar en la misma red. El puerto predeterminado es **UDP 7000**. Buscar sala utiliza conexión directa por IP; no descubre hosts automáticamente.
+Singleplayer funciona sin conexión: elige nombre, dificultad y cantidad de bots. Para LAN, el host crea una sala y comparte su **código de seis caracteres**; los demás lo introducen desde Buscar sala. Todos deben usar la misma revisión (protocolo 4) y estar en la misma red. El descubrimiento utiliza **UDP 7001** y la partida ENet **UDP 7000**. No hay servidor externo.
 
 ## Pruebas
 
@@ -70,10 +70,15 @@ En la verificación de la entrega Singleplayer del **11 de octubre de 2026** pas
 
 Verificación de esta subida (11 de octubre de 2026): compilación **0 errores / 0 advertencias**, consola general aprobada, interacción **435 comprobaciones** y Singleplayer rápido **12 633 comprobaciones / 36 partidas completas**. Se actualizó una expectativa antigua de la prueba de interacción para incluir las declaraciones iniciales; el código del juego se conserva como en la instalación. No se repitieron pruebas visuales ni LAN entre dispositivos durante esta subida.
 
+La revisión del **12 de octubre de 2026** incorpora intercambio con ocho cartas pendientes, victoria automática con diez combinadas, declaraciones iniciales corregidas y Pasa durante dos segundos. Pasaron compilación (0 errores/0 advertencias), núcleo, 465 comprobaciones de interacción, 4.144 comprobaciones de bots y 170 partidas, diagnósticos de Godot con render/arrastre y conexión por código con cuatro procesos. Los detalles y el alcance de estas pruebas están en [RevisionReglasCodigoSala.md](desmoche/Docs/RevisionReglasCodigoSala.md).
+
+La revisión posterior del **12 de octubre de 2026** muestra las cartas de victoria inicial en la mesa, coloca Pasa junto al grupo durante tres segundos y excluye al pagador de reclamar su pago. Conserva las victorias iniciales de los bots por decisión del usuario. Compilación, núcleo, 170 simulaciones, diagnóstico visual y cuatro procesos LAN verificados; consultar [VictoriasVisiblesYPagos.md](desmoche/Docs/VictoriasVisiblesYPagos.md).
+
 ## Documentación técnica
 
 | Tema | Documento |
 | --- | --- |
+| Reglas actualizadas y código LAN | [RevisionReglasCodigoSala.md](desmoche/Docs/RevisionReglasCodigoSala.md) |
 | Contexto y forma de trabajar | [CONTEXTO_PROYECTO.md](CONTEXTO_PROYECTO.md) |
 | Máquina de estados y reglas de flujo | [Fase4.md](desmoche/Docs/Fase4.md) |
 | Autoridad, comandos y conexión | [Fase5.md](desmoche/Docs/Fase5.md) |

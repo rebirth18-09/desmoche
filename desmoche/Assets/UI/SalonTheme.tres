@@ -1,0 +1,270 @@
+[gd_resource type="Theme" load_steps=24 format=3]
+
+[ext_resource type="FontFile" path="res://Assets/UI/Salon/Fonts/Body.ttf" id="body"]
+
+[ext_resource type="FontFile" path="res://Assets/UI/Salon/Fonts/Title.ttf" id="title"]
+
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/GoldButton.svg" id="GoldButton"]
+
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/GoldButtonHover.svg" id="GoldButtonHover"]
+
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/GoldButtonPressed.svg" id="GoldButtonPressed"]
+
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/EmeraldButton.svg" id="EmeraldButton"]
+
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/EmeraldButtonHover.svg" id="EmeraldButtonHover"]
+
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/EmeraldButtonPressed.svg" id="EmeraldButtonPressed"]
+
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/Panel.svg" id="Panel"]
+
+[sub_resource type="StyleBoxTexture" id="GoldButton"]
+texture = ExtResource("GoldButton")
+texture_margin_left = 52.0
+texture_margin_right = 52.0
+texture_margin_top = 18.0
+texture_margin_bottom = 18.0
+content_margin_left = 22.0
+content_margin_right = 22.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxTexture" id="GoldButtonHover"]
+texture = ExtResource("GoldButtonHover")
+texture_margin_left = 52.0
+texture_margin_right = 52.0
+texture_margin_top = 18.0
+texture_margin_bottom = 18.0
+content_margin_left = 22.0
+content_margin_right = 22.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxTexture" id="GoldButtonPressed"]
+texture = ExtResource("GoldButtonPressed")
+texture_margin_left = 52.0
+texture_margin_right = 52.0
+texture_margin_top = 18.0
+texture_margin_bottom = 18.0
+content_margin_left = 22.0
+content_margin_right = 22.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxTexture" id="EmeraldButton"]
+texture = ExtResource("EmeraldButton")
+texture_margin_left = 52.0
+texture_margin_right = 52.0
+texture_margin_top = 18.0
+texture_margin_bottom = 18.0
+content_margin_left = 22.0
+content_margin_right = 22.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxTexture" id="EmeraldButtonHover"]
+texture = ExtResource("EmeraldButtonHover")
+texture_margin_left = 52.0
+texture_margin_right = 52.0
+texture_margin_top = 18.0
+texture_margin_bottom = 18.0
+content_margin_left = 22.0
+content_margin_right = 22.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxTexture" id="EmeraldButtonPressed"]
+texture = ExtResource("EmeraldButtonPressed")
+texture_margin_left = 52.0
+texture_margin_right = 52.0
+texture_margin_top = 18.0
+texture_margin_bottom = 18.0
+content_margin_left = 22.0
+content_margin_right = 22.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxTexture" id="Panel"]
+texture = ExtResource("Panel")
+texture_margin_left = 28.0
+texture_margin_right = 28.0
+texture_margin_top = 28.0
+texture_margin_bottom = 28.0
+content_margin_left = 0.0
+content_margin_right = 0.0
+content_margin_top = 0.0
+content_margin_bottom = 0.0
+
+[sub_resource type="StyleBoxFlat" id="Input"]
+bg_color = Color(0.015, 0.075, 0.054, 0.95)
+border_color = Color(0.68, 0.54, 0.26, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_left = 10
+corner_radius_bottom_right = 10
+content_margin_left = 12.0
+content_margin_right = 12.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="Focus"]
+bg_color = Color(0, 0, 0, 0)
+border_color = Color(1, 0.88, 0.57, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_left = 10
+corner_radius_bottom_right = 10
+content_margin_left = 12.0
+content_margin_right = 12.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="Disabled"]
+bg_color = Color(0.04, 0.11, 0.08, 1)
+border_color = Color(0.27, 0.31, 0.20, 0.7)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_left = 10
+corner_radius_bottom_right = 10
+content_margin_left = 12.0
+content_margin_right = 12.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="Tile"]
+bg_color = Color(0.018, 0.12, 0.082, 0.9)
+border_color = Color(0.71, 0.56, 0.25, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+content_margin_left = 12.0
+content_margin_right = 12.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="TileSelected"]
+bg_color = Color(0.34, 0.34, 0.13, 0.95)
+border_color = Color(1, 0.85, 0.43, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+corner_radius_top_left = 12
+corner_radius_top_right = 12
+corner_radius_bottom_left = 12
+corner_radius_bottom_right = 12
+content_margin_left = 12.0
+content_margin_right = 12.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxEmpty" id="Empty"]
+
+[sub_resource type="StyleBoxFlat" id="Separator"]
+bg_color = Color(0.67, 0.51, 0.23, 0.4)
+border_color = Color(0, 0, 0, 0)
+border_width_left = 0
+border_width_top = 0
+border_width_right = 0
+border_width_bottom = 0
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_left = 0
+corner_radius_bottom_right = 0
+content_margin_left = 0.0
+content_margin_right = 0.0
+content_margin_top = 10.0
+content_margin_bottom = 10.0
+
+[resource]
+default_font = ExtResource("body")
+default_font_size = 20
+Label/colors/font_color = Color(0.94, 0.93, 0.85, 1)
+Button/colors/font_color = Color(0.98, 0.94, 0.80, 1)
+Button/colors/font_hover_color = Color(1, 0.96, 0.84, 1)
+Button/colors/font_pressed_color = Color(1, 0.96, 0.84, 1)
+Button/colors/font_disabled_color = Color(0.5, 0.55, 0.49, 1)
+Button/font_sizes/font_size = 24
+Button/styles/normal = SubResource("EmeraldButton")
+Button/styles/hover = SubResource("EmeraldButtonHover")
+Button/styles/pressed = SubResource("EmeraldButtonPressed")
+Button/styles/hover_pressed = SubResource("EmeraldButtonPressed")
+Button/styles/disabled = SubResource("Disabled")
+Button/styles/focus = SubResource("Focus")
+PrimaryButton/base_type = &"Button"
+PrimaryButton/fonts/font = ExtResource("title")
+PrimaryButton/colors/font_color = Color(0.025, 0.13, 0.085, 1)
+PrimaryButton/colors/font_hover_color = Color(0.025, 0.13, 0.085, 1)
+PrimaryButton/colors/font_pressed_color = Color(0.025, 0.13, 0.085, 1)
+PrimaryButton/colors/font_focus_color = Color(0.025, 0.13, 0.085, 1)
+PrimaryButton/colors/font_hover_pressed_color = Color(0.025, 0.13, 0.085, 1)
+PrimaryButton/styles/normal = SubResource("GoldButton")
+PrimaryButton/styles/hover = SubResource("GoldButtonHover")
+PrimaryButton/styles/pressed = SubResource("GoldButtonPressed")
+PrimaryButton/styles/hover_pressed = SubResource("GoldButtonPressed")
+MenuLink/base_type = &"Button"
+MenuLink/font_sizes/font_size = 21
+MenuLink/colors/font_color = Color(0.97, 0.88, 0.64, 1)
+MenuLink/styles/normal = SubResource("Empty")
+MenuLink/styles/hover = SubResource("Empty")
+MenuLink/styles/pressed = SubResource("Empty")
+MenuLink/styles/disabled = SubResource("Empty")
+BotChoice/base_type = &"Button"
+BotChoice/styles/normal = SubResource("Tile")
+BotChoice/styles/hover = SubResource("TileSelected")
+BotChoice/styles/pressed = SubResource("TileSelected")
+BotChoice/styles/hover_pressed = SubResource("TileSelected")
+DifficultyChoice/base_type = &"Button"
+DifficultyChoice/font_sizes/font_size = 21
+DifficultyChoice/styles/normal = SubResource("Tile")
+DifficultyChoice/styles/hover = SubResource("EmeraldButtonHover")
+DifficultyChoice/styles/pressed = SubResource("GoldButton")
+DifficultyChoice/styles/hover_pressed = SubResource("GoldButton")
+DifficultyChoice/colors/font_pressed_color = Color(0.025, 0.13, 0.085, 1)
+DifficultyChoice/colors/font_hover_pressed_color = Color(0.025, 0.13, 0.085, 1)
+GoldTitle/base_type = &"Label"
+GoldTitle/fonts/font = ExtResource("title")
+GoldTitle/font_sizes/font_size = 54
+GoldTitle/colors/font_color = Color(0.98, 0.83, 0.48, 1)
+GoldTitle/colors/font_shadow_color = Color(0.005, 0.025, 0.015, 0.9)
+GoldTitle/constants/shadow_offset_x = 1
+GoldTitle/constants/shadow_offset_y = 3
+GoldTitle/constants/outline_size = 1
+GoldTitle/colors/font_outline_color = Color(0.63, 0.40, 0.13, 0.9)
+SerifHeading/base_type = &"Label"
+SerifHeading/fonts/font = ExtResource("title")
+SerifHeading/font_sizes/font_size = 34
+PanelContainer/styles/panel = SubResource("Panel")
+LineEdit/font_sizes/font_size = 21
+LineEdit/colors/font_color = Color(0.95, 0.95, 0.86, 1)
+LineEdit/colors/font_placeholder_color = Color(0.59, 0.72, 0.62, 1)
+LineEdit/colors/caret_color = Color(0.98, 0.86, 0.57, 1)
+LineEdit/colors/selection_color = Color(0.38, 0.4, 0.18, 1)
+LineEdit/styles/normal = SubResource("Input")
+LineEdit/styles/read_only = SubResource("Input")
+LineEdit/styles/focus = SubResource("Focus")
+ItemList/styles/panel = SubResource("Input")
+ItemList/colors/font_color = Color(0.94, 0.93, 0.85, 1)
+ItemList/font_sizes/font_size = 20
+ProgressBar/styles/background = SubResource("Input")
+ProgressBar/styles/fill = SubResource("TileSelected")
+HSeparator/styles/separator = SubResource("Separator")
+ScrollContainer/constants/scrollbar_h_separation = 8
+ScrollContainer/constants/scrollbar_v_separation = 8

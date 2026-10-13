@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Desmoche.Application;
+using Desmoche.Domain;
 using Desmoche.Sessions;
 using Desmoche.Singleplayer;
 using Desmoche.Networking.Core;
@@ -140,6 +141,8 @@ public partial class Mesa : Control
         if (!_ready) throw new InvalidOperationException("Mesa debe estar lista antes de representar datos.");
         SynchronizeInteraction(view);
         _connection.Text = connectionStatus;
+        _challengedMeld = null;
+        GetNode<Label>(ContentPath + "Table/Padding/Surface/MyGame/TitleLabel").Text = "Mi juego";
         Clear(_players); Clear(_selfPlayer); Clear(_hand);
         Clear(_rivalGames); Clear(_ownGames); Clear(_revealed);
         _offerZone.Visible = false; _revealedZone.Visible = false;
@@ -177,20 +180,28 @@ public partial class Mesa : Control
         _handEmpty.Visible = view.OwnHand.Length == 0;
         _handEmpty.Text = "No tienes cartas en la mano.";
         MeldDto[] own = view.Melds.Where(m => m.OwnerId == view.RecipientId).OrderBy(m => m.Id).ToArray();
-        _meldEmpty.Visible = own.Length == 0;
-        foreach (MeldDto meld in own) AddMeld(_ownGames, meld);
+        bool initialWinner = IsInitialWinner(view, view.RecipientId);
+        _meldEmpty.Visible = own.Length == 0 && !initialWinner;
+        if (initialWinner)
+        {
+            AddInitialVictory(_ownGames, view.InitialVictory!);
+            GetNode<Label>(ContentPath + "Table/Padding/Surface/MyGame/TitleLabel").Text =
+                "Mi juego · " + InitialVictoryName(view.InitialVictory!.Kind);
+        }
+        else foreach (MeldDto meld in own) AddMeld(_ownGames, meld);
 
         if (view.Phase is GamePhase.InitialExchange or GamePhase.InitialDeclarations or GamePhase.AwaitingClaims)
         {
             _response.Visible = true;
-            _response.Text = view.OwnResponseSubmitted ? "Tu respuesta ha sido recibida." : "Tu respuesta está pendiente.";
+            _response.Text = view.OwnResponseSubmitted ? "No tienes respuestas pendientes." : "Tu respuesta está pendiente.";
         }
         if (view.Phase == GamePhase.Finished)
         {
             _result.Visible = true;
             _result.Text = view.Result == MatchResult.Draw ? "Partida finalizada · Empate"
                 : view.WinnerPlayerId is int winner ? "Ganó " + PlayerName(view, winner) +
-                  (view.Result == MatchResult.InitialVictory ? " · Victoria inicial" : " · Desmoche")
+                  (view.Result == MatchResult.InitialVictory ? " · " +
+                      (view.InitialVictory is { } proof ? InitialVictoryName(proof.Kind) : "Victoria inicial") : " · Desmoche")
                 : "Partida finalizada";
             if (view.WinnerPlayerId is not null &&
                 view.Result is MatchResult.Desmoche or MatchResult.InitialVictory)
@@ -241,13 +252,16 @@ public partial class Mesa : Control
         var column = new VBoxContainer { Name = "JuegosJugador" + player.Id,
             CustomMinimumSize = new Vector2(RivalWidth, 136) };
         column.AddThemeConstantOverride("separation", 8);
-        column.AddChild(CasinoHeading("Juego " + player.Name));
+        bool initialWinner = IsInitialWinner(view, player.Id);
+        column.AddChild(CasinoHeading("Juego " + player.Name +
+            (initialWinner ? " · " + InitialVictoryName(view.InitialVictory!.Kind) : "")));
         var rows = new Control { Name = "Rows", CustomMinimumSize = new Vector2(RivalWidth, 100),
             MouseFilter = MouseFilterEnum.Ignore };
         column.AddChild(rows);
         MeldDto[] melds = view.Melds.Where(m => m.OwnerId == player.Id).OrderBy(m => m.Id).ToArray();
-        foreach (MeldDto meld in melds) AddMeld(rows, meld);
-        if (melds.Length == 0)
+        if (initialWinner) AddInitialVictory(rows, view.InitialVictory!);
+        else foreach (MeldDto meld in melds) AddMeld(rows, meld);
+        if (melds.Length == 0 && !initialWinner)
         {
             Label empty = Text("Sin juegos publicados", 12, new Color(0.52f, 0.70f, 0.62f));
             empty.HorizontalAlignment = HorizontalAlignment.Center; rows.AddChild(empty);
@@ -263,8 +277,32 @@ public partial class Mesa : Control
         cards.AddThemeConstantOverride("v_separation", 5);
         parent.AddChild(cards);
         for (int i = 0; i < meld.Cards.Length; i++) AddCard(cards, meld.Cards[i], "Carta" + i);
+        if (_interactionView?.OrderChallenge?.PlayerId == meld.OwnerId && _challengedMeld is null &&
+            !RulesValidator.HasAlternatingSetOrder(meld.Cards.Select(Card.FromId).ToArray()))
+            _challengedMeld = cards;
         if (parent == _ownGames) BindOwnMeldDrop(cards, meld.Id);
         else cards.MouseFilter = MouseFilterEnum.Ignore;
+    }
+
+    private static bool IsInitialWinner(SnapshotDto view, int playerId) =>
+        view.Phase == GamePhase.Finished && view.Result == MatchResult.InitialVictory &&
+        view.WinnerPlayerId == playerId && view.InitialVictory is not null;
+
+    private static string InitialVictoryName(InitialVictoryKind kind) => kind switch
+    {
+        InitialVictoryKind.Color => "Color", InitialVictoryKind.Peladilla => "Peladilla",
+        InitialVictoryKind.LowStraight => "Desmoche A-2-3-4",
+        InitialVictoryKind.HighStraight => "Desmoche J-Q-K-A",
+        InitialVictoryKind.Cuarta => "Cuarta", _ => "Victoria inicial"
+    };
+
+    private void AddInitialVictory(Control parent, InitialVictoryDto proof)
+    {
+        var cards = new HFlowContainer { Name = "VictoriaInicial", MouseFilter = MouseFilterEnum.Ignore,
+            Alignment = FlowContainer.AlignmentMode.Center, TooltipText = InitialVictoryName(proof.Kind) };
+        cards.AddThemeConstantOverride("h_separation", 5);
+        parent.AddChild(cards);
+        for (int i = 0; i < proof.Cards.Length; i++) AddCard(cards, proof.Cards[i], "Carta" + i);
     }
 
     private void AddCardRow(VBoxContainer parent, string title, int[] cards)
@@ -338,6 +376,7 @@ public partial class Mesa : Control
             : "Turno de " + PlayerName(view, view.CurrentPlayerId),
         GamePhase.AwaitingClaims => "Carta ofrecida · Esperando respuestas",
         GamePhase.AwaitingPayment => "Pago pendiente · " + PlayerName(view, view.PaymentPlayerId),
+        GamePhase.AwaitingOrderChallenge => "Pasa · 3 segundos para señalar el orden de " + PlayerName(view, view.OrderChallenge?.PlayerId),
         GamePhase.Finished => "No hay turno activo",
         _ => "Esperando estado"
     };
@@ -347,6 +386,7 @@ public partial class Mesa : Control
         GamePhase.Preparing => "Preparación", GamePhase.InitialExchange => "Intercambio inicial",
         GamePhase.InitialDeclarations => "Declaraciones iniciales", GamePhase.AwaitingDraw => "Esperando robo",
         GamePhase.AwaitingClaims => "Esperando reclamos", GamePhase.AwaitingPayment => "Esperando pago",
+        GamePhase.AwaitingOrderChallenge => "Comprobando orden de colores",
         GamePhase.Finished => "Partida finalizada", _ => "Estado desconocido"
     };
 }

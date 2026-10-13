@@ -16,6 +16,7 @@ public partial class LocalGameSession : Node, IGameSession
     private readonly Queue<CommandDto> _commands = new();
     private long _nextRequest;
     private bool _restartRequested;
+    private ulong _beganAt;
     public bool IsActive => _controller?.IsActive == true;
     public bool IsLocal => true;
     public bool CanManageMatch => IsActive;
@@ -34,6 +35,7 @@ public partial class LocalGameSession : Node, IGameSession
         _commands.Clear();
         _restartRequested = false;
         _controller = controller;
+        _beganAt = Time.GetTicksMsec();
         _nextRequest = controller.NextHumanRequestId - 1;
         Status = controller.Status;
         SessionChanged?.Invoke();
@@ -63,7 +65,7 @@ public partial class LocalGameSession : Node, IGameSession
     {
         LocalMatchController? controller = _controller;
         if (controller is null || !controller.IsActive) return;
-        long now = (long)Time.GetTicksMsec();
+        long now = (long)(Time.GetTicksMsec() - _beganAt);
         controller.BotDelayMilliseconds = Math.Max(0, BotDelayMilliseconds);
         if (_restartRequested)
         {

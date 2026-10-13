@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Desmoche.Application;
+using Desmoche.Domain;
 using Desmoche.Networking.Core;
 using Desmoche.Presentation;
 using Godot;
@@ -93,6 +94,8 @@ public partial class MesaDynamicSmoke : Main
                     GD.Print("MESA DYNAMIC CASE: " + Names[fixture] + " · " + Resolutions[size]);
                 }
             }
+            await ValidateRevisionButtons();
+            await ValidateWinningCardsAndPasa();
             Show(CreateFixture(0));
             await Settle();
             await ValidateGestures();
@@ -104,6 +107,129 @@ public partial class MesaDynamicSmoke : Main
             if (_testViewport.GuiIsDragging()) _testViewport.GuiCancelDrag();
             Finish(false, error.Message);
         }
+    }
+
+    private async Task ValidateRevisionButtons()
+    {
+        Button Button(string name) => _mesa.GetNode<Button>(Mesa.ContextActionsPath + name);
+        SnapshotDto initial = CreateFixture(3) with { Session = new string('b', 32),
+            OwnHand = new[] { 0, 14, 2, 26, 1, 45, 3, 22, 50 } };
+        Show(initial);
+        await Settle();
+        Check(!Button("DeclareInitialButton").IsVisibleInTree() && Button("PeladillaButton").IsVisibleInTree(),
+            "Mano desordenada sin juegos contiguos muestra Peladilla, sin declarar victoria.");
+        for (int id = 1; id <= 3; id++)
+        {
+            Carta target = HandCard(id - 1);
+            Variant drag = CardDragData.Create(_shown, id, CardDragOrigin.Hand);
+            Check(target._CanDropData(new Vector2(target.Size.X, 0), drag), "Reordenar secuencia inicial mediante arrastre.");
+            target._DropData(new Vector2(target.Size.X, 0), drag);
+        }
+        Check(Button("DeclareInitialButton").IsVisibleInTree() && !Button("PeladillaButton").IsVisibleInTree(),
+            "Ordenar A234 hace aparecer Desmoche y oculta Peladilla sin enviar cartas.");
+        ValidatePrivacy();
+        SnapshotDto color = initial with { Session = new string('c', 32),
+            OwnHand = new[] { 13, 28, 15, 30, 17, 32, 19, 34, 21 } };
+        Show(color with { Phase = GamePhase.InitialExchange });
+        Check(!Button("ColorButton").IsVisibleInTree(), "Color no se declara antes del cambio.");
+        Show(color);
+        await Settle();
+        Check(Button("ColorButton").IsVisibleInTree(), "Color aparece tras el cambio con todas rojas.");
+        if (_captureDirectory.Length > 0) await Capture("Color-976x874.png");
+        SnapshotDto challenge = initial with { Phase = GamePhase.AwaitingOrderChallenge,
+            CurrentPlayerId = 1, OwnHand = Enumerable.Range(0, 9).ToArray(),
+            Players = new[] { initial.Players[0], initial.Players[1] with { CardCount = 6 } },
+            Melds = new[] { new MeldDto(1, 2, new[] { 18, 31, 44 }) },
+            OrderChallenge = new OrderChallengeDto(2, 1, 3000) };
+        Show(challenge);
+        await Settle();
+        Check(_mesa.GetNode<Button>(Mesa.PasaButtonPath).IsVisibleInTree(), "El rival puede ver Pasa durante el plazo.");
+        if (_captureDirectory.Length > 0) await Capture("Pasa-976x874.png");
+        Show(challenge with { RecipientId = 2, OwnHand = new[] { 39, 40, 41, 42, 43, 45 } });
+        Check(!_mesa.GetNode<Button>(Mesa.PasaButtonPath).IsVisibleInTree(), "Pasa permanece oculto para el infractor.");
+        Show(challenge with { Phase = GamePhase.AwaitingDraw, OrderChallenge = null,
+            Melds = new[] { new MeldDto(1, 2, new[] { 18, 44, 31 }) } });
+        Check(!_mesa.GetNode<Button>(Mesa.PasaButtonPath).IsVisibleInTree(), "Pasa desaparece al resolver la oportunidad.");
+        Show(CreateFixture(1));
+        Check(!_mesa.HasNode(Mesa.ContextActionsPath + "DesmocheButton"),
+            "En juego normal no hay un botón de victoria manual.");
+    }
+
+    private async Task ValidateWinningCardsAndPasa()
+    {
+        foreach (Vector2I size in Resolutions)
+        {
+            GetWindow().Size = size;
+            if (_testViewport is SubViewport isolated) isolated.Size = size;
+            SnapshotDto initial = CreateFixture(3);
+            foreach (InitialVictoryKind kind in Enum.GetValues<InitialVictoryKind>())
+            {
+                int[] proof = kind switch
+                {
+                    InitialVictoryKind.Color => new[] { 13, 28, 15, 30, 17, 32, 19, 34, 21 },
+                    InitialVictoryKind.Peladilla => new[] { 0, 4, 8, 14, 18, 22, 28, 32, 36 },
+                    InitialVictoryKind.LowStraight => new[] { 0, 1, 2, 3 },
+                    InitialVictoryKind.HighStraight => new[] { 10, 11, 12, 0 },
+                    _ => new[] { 5, 18, 44, 31 }
+                };
+                foreach (int winner in new[] { 1, 2 })
+                {
+                    SnapshotDto won = initial with { Phase = GamePhase.Finished, Result = MatchResult.InitialVictory,
+                        WinnerPlayerId = winner, InitialVictory = new(kind, proof),
+                        RevealedHands = new[] { new RevealedHandDto(winner, proof) } };
+                    Show(won); await Settle();
+                    string location = winner == 1 ? Mesa.OwnGamesPath : Mesa.RivalGamesPath + "/JuegosJugador2/Rows";
+                    Control group = _mesa.GetNode<Control>(location + "/VictoriaInicial");
+                    Check(Cards(group).Select(c => c.FaceCardId!.Value).SequenceEqual(proof),
+                        "La mesa muestra el orden exacto de " + kind + " tanto propio como rival.");
+                    Check(!Cards(group).Any(card => Overlaps(card.GetGlobalRect(),
+                        _mesa.GetNode<Carta>(Mesa.CenterPath + "Mazo/Content/Carta").GetGlobalRect())),
+                        "Las cartas de victoria permanecen en la zona del ganador.");
+                    Check(!_mesa.GetNode<Button>(Mesa.PasaButtonPath).IsVisibleInTree(), "No hay Pasa tras finalizar.");
+                    ValidatePrivacy();
+                    if (_captureDirectory.Length > 0 && winner == 2 && size.X == 1200 &&
+                        kind is InitialVictoryKind.Color or InitialVictoryKind.Peladilla)
+                        await Capture("Victoria-" + kind + "-1200x900.png");
+                }
+            }
+            foreach (int offender in new[] { 2, 3, 4 })
+            {
+                SnapshotDto challenge = initial with { Phase = GamePhase.AwaitingOrderChallenge,
+                    Players = new[] { initial.Players[0], initial.Players[1],
+                        new PublicPlayerDto(3, "Ana", 2, 6, true, false), new PublicPlayerDto(4, "Luis", 3, 6, true, false) },
+                    Melds = new[] { new MeldDto(7, offender, new[] { 18, 31, 44 }),
+                        new MeldDto(8, offender, new[] { 39, 40, 41, 42 }) },
+                    OrderChallenge = new(offender, 1, 3000) };
+                Show(challenge); await Settle();
+                Control group = _mesa.GetNode<Control>(Mesa.RivalGamesPath + "/JuegosJugador" + offender + "/Rows/Juego7");
+                Button pasa = _mesa.GetNode<Button>(Mesa.PasaButtonPath);
+                Rect2[] cardRects = Cards(group).Select(card => card.GetGlobalRect()).ToArray();
+                Vector2 start = new(cardRects.Min(rect => rect.Position.X), cardRects.Min(rect => rect.Position.Y));
+                Vector2 end = new(cardRects.Max(rect => rect.End.X), cardRects.Max(rect => rect.End.Y));
+                Rect2 target = new(start, end - start), button = pasa.GetGlobalRect();
+                Check(pasa.IsVisibleInTree() && !Overlaps(target, button), "Pasa queda al lado del grupo, sin tapar sus cartas.");
+                Check(Math.Abs(button.Position.X - target.End.X - 8) < 2 ||
+                    Math.Abs(target.Position.X - button.End.X - 8) < 2 ||
+                    Math.Abs(button.Position.Y - target.End.Y - 6) < 2,
+                    "Pasa queda a ocho píxeles del lado o a seis debajo de las cartas reales, sin espacio vacío.");
+                Check(!Overlaps(button, _mesa.GetNode<Control>(Mesa.CenterPath + "Mazo/Content/TitleLabel").GetGlobalRect()),
+                    "Pasa no tapa el nombre del mazo.");
+                Check(!Cards(_mesa.GetNode(Mesa.RivalGamesPath)).Any(c => Overlaps(button, c.GetGlobalRect())),
+                    "Pasa no tapa otros juegos publicados.");
+                if (_captureDirectory.Length > 0 && offender == 3 && size.X == 1200)
+                {
+                    GD.Print($"PASA GEOMETRY: group={target}; button={button}; local={pasa.Position}; scale={pasa.Scale}");
+                    // La fixture no envía comandos, pero esta captura muestra el estilo habilitado real.
+                    pasa.Disabled = false;
+                    await Settle();
+                    await Capture("Pasa-junto-al-juego.png");
+                }
+            }
+        }
+        Show(CreateFixture(0) with { OwnResponseSubmitted = true });
+        Check(!_mesa.GetNode<Button>(Mesa.ContextActionsPath + "ClaimButton").IsVisibleInTree() &&
+            !_mesa.GetNode<Button>(Mesa.ContextActionsPath + "PassButton").IsVisibleInTree(),
+            "Quien ya pagó no ve aceptar ni rechazar su propia carta.");
     }
 
     private void Show(SnapshotDto view)
@@ -167,6 +293,7 @@ public partial class MesaDynamicSmoke : Main
     {
         Check(NetworkProtocol.Encode(_shown) == _before, "Los gestos y el render conservan el snapshot.");
         int[] allowed = _shown.OwnHand.Concat(_shown.Melds.SelectMany(meld => meld.Cards))
+            .Concat(_shown.RevealedHands.SelectMany(hand => hand.Cards))
             .Concat(_shown.DiscardTop is int discard ? new[] { discard } : Array.Empty<int>())
             .Concat(_shown.OfferedCard is int offer ? new[] { offer } : Array.Empty<int>()).ToArray();
         Check(Cards(_mesa).All(card => allowed.Contains(card.FaceCardId!.Value)),

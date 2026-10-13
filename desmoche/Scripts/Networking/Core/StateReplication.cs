@@ -11,7 +11,8 @@ public sealed record PublicSnapshotDto(int Version, string Session, long Revisio
     long Window, GamePhase Phase, MatchResult Result, int? CurrentPlayerId,
     int? PaymentPlayerId, int? WinnerPlayerId, PublicPlayerDto[] Players,
     MeldDto[] Melds, int DeckCount, int DiscardCount, int? DiscardTop,
-    int? OfferedCard, RevealedHandDto[] RevealedHands);
+    int? OfferedCard, RevealedHandDto[] RevealedHands, int ExchangeCount = 0,
+    OrderChallengeDto? OrderChallenge = null, bool OpeningOffer = false, InitialVictoryDto? InitialVictory = null);
 
 public sealed record PrivateSnapshotDto(int Version, string Session, long Revision,
     int RecipientId, int[] OwnHand, bool OwnResponseSubmitted);
@@ -25,7 +26,8 @@ public static class StateProjection
             source.Window, source.Phase, source.Result, source.CurrentPlayerId,
             source.PaymentPlayerId, source.WinnerPlayerId, source.Players.ToArray(),
             CopyMelds(source.Melds), source.DeckCount, source.DiscardCount,
-            source.DiscardTop, source.OfferedCard, CopyRevealed(source.RevealedHands));
+            source.DiscardTop, source.OfferedCard, CopyRevealed(source.RevealedHands),
+            source.ExchangeCount, source.OrderChallenge, source.OpeningOffer, CopyInitial(source.InitialVictory));
     }
 
     public static PrivateSnapshotDto Private(SnapshotDto source)
@@ -58,6 +60,12 @@ public static class StateProjection
             !KnownPlayer(value.PaymentPlayerId, playerIds) ||
             !KnownPlayer(value.WinnerPlayerId, playerIds)) return false;
 
+        if (value.ExchangeCount is < 0 or > 4 ||
+            value.ExchangeCount > 0 && value.Phase != GamePhase.InitialExchange ||
+            value.OpeningOffer && value.Phase != GamePhase.AwaitingClaims ||
+            (value.Phase == GamePhase.AwaitingOrderChallenge) != (value.OrderChallenge is not null)) return false;
+        if (value.OrderChallenge is { } challenge && (!playerIds.Contains(challenge.PlayerId) ||
+            challenge.Id <= 0 || challenge.RemainingMilliseconds is < 0 or > ServerSession.PasaDurationMilliseconds)) return false;
         bool won = value.Result is MatchResult.Desmoche or MatchResult.InitialVictory;
         if ((value.Phase == GamePhase.Finished) != (value.Result != MatchResult.None) ||
             won != value.WinnerPlayerId.HasValue ||
@@ -89,9 +97,20 @@ public static class StateProjection
             foreach (int id in hand.Cards)
                 if (!visibleCards.Add(id)) return false;
         }
+        if ((value.Result == MatchResult.InitialVictory) != (value.InitialVictory is not null)) return false;
+        if (value.InitialVictory is { } proof)
+        {
+            if (value.Result != MatchResult.InitialVictory || !Enum.IsDefined(proof.Kind) ||
+                !ValidCards(proof.Cards, 9)) return false;
+            int expected = proof.Kind is InitialVictoryKind.Color or InitialVictoryKind.Peladilla ? 9 : 4;
+            var winnerCards = value.Melds.Where(m => m.OwnerId == value.WinnerPlayerId).SelectMany(m => m.Cards)
+                .Concat(value.RevealedHands.Where(h => h.PlayerId == value.WinnerPlayerId).SelectMany(h => h.Cards)).ToHashSet();
+            if (proof.Cards.Length != expected || proof.Cards.Any(id => !winnerCards.Contains(id))) return false;
+            // Evidencia de cartas ya públicas al ganar, no una segunda ubicación de cartas.
+        }
         int accounted = value.DeckCount + value.DiscardCount +
             value.Players.Sum(p => p.CardCount) + value.Melds.Sum(m => m.Cards.Length) +
-            (value.OfferedCard.HasValue ? 1 : 0);
+            (value.OfferedCard.HasValue ? 1 : 0) + value.ExchangeCount;
         return value.Phase == GamePhase.Preparing
             ? accounted == 0 && value.Melds.Length == 0 && value.Players.All(p => p.CardCount == 0)
             : value.Players.Length >= 2 && accounted == 52;
@@ -112,6 +131,8 @@ public static class StateProjection
     private static bool KnownPlayer(int? id, HashSet<int> players) =>
         id is null || players.Contains(id.Value);
 
+    internal static InitialVictoryDto? CopyInitial(InitialVictoryDto? source) =>
+        source is null ? null : new(source.Kind, source.Cards.ToArray());
     internal static MeldDto[] CopyMelds(MeldDto[] source) =>
         source.Select(m => new MeldDto(m.Id, m.OwnerId, m.Cards.ToArray())).ToArray();
     internal static RevealedHandDto[] CopyRevealed(RevealedHandDto[] source) =>
@@ -120,7 +141,8 @@ public static class StateProjection
     {
         Players = source.Players.ToArray(),
         Melds = CopyMelds(source.Melds),
-        RevealedHands = CopyRevealed(source.RevealedHands)
+        RevealedHands = CopyRevealed(source.RevealedHands),
+        InitialVictory = CopyInitial(source.InitialVictory)
     };
     internal static PrivateSnapshotDto Copy(PrivateSnapshotDto source) =>
         source with { OwnHand = source.OwnHand.ToArray() };
@@ -129,7 +151,7 @@ public static class StateProjection
             p.Phase, p.Result, p.CurrentPlayerId, p.PaymentPlayerId, p.WinnerPlayerId,
             p.Players.ToArray(), own.OwnHand.ToArray(), CopyMelds(p.Melds),
             p.DeckCount, p.DiscardCount, p.DiscardTop, p.OfferedCard,
-            CopyRevealed(p.RevealedHands), own.OwnResponseSubmitted);
+            CopyRevealed(p.RevealedHands), own.OwnResponseSubmitted, p.ExchangeCount, p.OrderChallenge, p.OpeningOffer, CopyInitial(p.InitialVictory));
 }
 
 // No supone orden entre RPC y sincronizacion. Conserva solo la ultima parte de cada canal.

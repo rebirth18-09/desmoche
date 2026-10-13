@@ -205,25 +205,25 @@ public static class RulesTests
         Expect(RulesValidator.ValidateCardTransfer(four, moved, four),
             RuleError.DuplicateCard, "Destino no reutiliza cartas del donante.");
 
-        var low = C(Suit.Hearts, 1, 2, 3, 4, 5);
+        var low = C(Suit.Hearts, 1, 2, 3, 4);
         var lowHand = new PlayerHand(
-            low.Concat(C(Suit.Clubs, 7, 9, 11, 13)));
+            low.Concat(C(Suit.Hearts, 5)).Concat(C(Suit.Clubs, 7, 9, 11, 13)));
 
         Expect(RulesValidator.ValidateInitialVictory(lowHand,
             InitialVictoryKind.LowStraight, low),
-            RuleError.None, "Victoria inicial A-2-3-4-5.");
+            RuleError.None, "Victoria inicial A-2-3-4.");
 
         Expect(RulesValidator.ValidateInitialVictory(lowHand,
             InitialVictoryKind.LowStraight, low.Reverse().ToArray()),
-            RuleError.None, "Victoria inicial descendente 5-4-3-2-A.");
+            RuleError.None, "Victoria inicial descendente 4-3-2-A.");
 
-        var high = C(Suit.Spades, 10, 11, 12, 13, 1);
+        var high = C(Suit.Spades, 11, 12, 13, 1);
         var highHand = new PlayerHand(
-            high.Concat(C(Suit.Clubs, 2, 4, 6, 8)));
+            high.Concat(C(Suit.Spades, 10)).Concat(C(Suit.Clubs, 2, 4, 6, 8)));
 
         Expect(RulesValidator.ValidateInitialVictory(highHand,
             InitialVictoryKind.HighStraight, high),
-            RuleError.None, "Victoria inicial 10-J-Q-K-A.");
+            RuleError.None, "Victoria inicial J-Q-K-A.");
 
         var quadHand = new PlayerHand(
             four.Concat(C(Suit.Hearts, 1, 3, 5, 7, 9)));
@@ -252,14 +252,14 @@ public static class RulesTests
             .Concat(C(Suit.Diamonds, 2, 4, 6, 8)));
 
         Expect(RulesValidator.ValidateInitialVictory(
-            red, InitialVictoryKind.Color),
+            red, InitialVictoryKind.Color, red.Cards.OrderBy(c => (int)c.Rank).ToArray()),
             RuleError.None, "Color rojo con distintos palos.");
 
         var black = new PlayerHand(C(Suit.Clubs, 1, 3, 5, 7, 9)
             .Concat(C(Suit.Spades, 2, 4, 6, 8)));
 
         Expect(RulesValidator.ValidateInitialVictory(
-            black, InitialVictoryKind.Color),
+            black, InitialVictoryKind.Color, black.Cards.OrderBy(c => (int)c.Rank).ToArray()),
             RuleError.None, "Color negro con distintos palos.");
 
         Expect(RulesValidator.ValidateInitialVictory(
@@ -282,13 +282,13 @@ public static class RulesTests
             RuleError.None, "Peladilla sin juegos ni proyectos con una carta.");
 
         CheckPeladillaReplacement(Suit.Diamonds, 3, 2,
-            "Dos del mismo rango excluyen peladilla.");
+            "Dos del mismo rango permiten peladilla si no hay juegos.");
         CheckPeladillaReplacement(Suit.Clubs, 6, 3,
-            "Dos consecutivas del mismo palo excluyen peladilla.");
+            "Dos consecutivas sin tercera permiten peladilla.");
         CheckPeladillaReplacement(Suit.Clubs, 6, 4,
-            "Dos con hueco de una carta excluyen peladilla.");
+            "Dos con hueco sin tercera permiten peladilla.");
         CheckPeladillaReplacement(Suit.Hearts, 4, 1,
-            "Q-A puede recibir K: no es peladilla.");
+            "Q-A sin K no forma juego y permite peladilla.");
 
         Expect(RulesValidator.ValidateInitialVictory(
             lowHand, InitialVictoryKind.Peladilla),
@@ -319,7 +319,7 @@ public static class RulesTests
         Expect(RulesValidator.ValidateInitialVictory(lowHand,
             InitialVictoryKind.LowStraight, C(Suit.Hearts, 2, 3, 4, 5)),
             RuleError.InvalidInitialDeclaration,
-            "Escalera inicial de cuatro no cumple A2345.");
+            "2-3-4-5 no cumple la victoria A234.");
 
         Expect(RulesValidator.ValidateInitialVictory(lowHand,
             InitialVictoryKind.LowStraight, C(Suit.Hearts, 1, 3, 2, 4, 5)),
@@ -333,12 +333,12 @@ public static class RulesTests
             lowHand, InitialVictoryKind.Cuarta),
             RuleError.NullInput, "Cuarta inicial necesita declarar sus cartas.");
 
-        var almostLow = new PlayerHand(C(Suit.Hearts, 1, 2, 3, 4)
-            .Concat(C(Suit.Clubs, 6, 8, 10, 12, 13)));
+        var almostLow = new PlayerHand(C(Suit.Hearts, 1, 2, 3)
+            .Concat(C(Suit.Clubs, 5, 6, 8, 10, 12, 13)));
 
         Expect(RulesValidator.ValidateInitialVictory(almostLow,
-            InitialVictoryKind.LowStraight, low, low[4]),
-            RuleError.None, "A2345 puede completarse con primera carta del pozo.");
+            InitialVictoryKind.LowStraight, low, low[3]),
+            RuleError.None, "A234 puede completarse con primera carta del pozo.");
 
         var referenceHands = new List<PlayerHand>
         {
@@ -455,11 +455,11 @@ public static class RulesTests
 
             Expect(RulesValidator.ValidateInitialVictory(
                 changed, InitialVictoryKind.Peladilla),
-                RuleError.InvalidInitialDeclaration, description);
+                RuleError.None, description);
         }
     }
 
-    // Oraculo independiente: prueba juegos existentes y cada tercera carta.
+    // Oraculo independiente: busca cada terna existente sin importar el orden.
     private static bool ReferencePeladilla(PlayerHand hand)
     {
         IReadOnlyList<Card> cards = hand.Cards;
@@ -474,12 +474,7 @@ public static class RulesTests
                         return false;
                 }
 
-                for (int id = 0; id < 52; id++)
-                {
-                    if (!hand.Contains(id) &&
-                        ReferenceTriple(cards[i], cards[j], Card.FromId(id)))
-                        return false;
-                }
+                // No se agregan cartas hipoteticas: solo juegos de la mano recibida.
             }
         }
 

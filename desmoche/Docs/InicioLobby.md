@@ -1,3 +1,5 @@
+> Actualización 12/10/2026: las reglas de victoria, intercambio, Pasa y acceso por código se detallan en [RevisionReglasCodigoSala.md](RevisionReglasCodigoSala.md). Esa revisión prevalece sobre las instrucciones históricas de este documento.
+
 # Carga, menú principal y lobby simplificado
 
 Actualización posterior: Singleplayer ya está habilitado. Su configuración, sesión local y bots están documentados en [Singleplayer.md](Singleplayer.md). Las referencias siguientes a «Próximamente» describen el estado de la entrega original del menú.

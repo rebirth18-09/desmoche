@@ -1,3 +1,5 @@
+> Actualización 12/10/2026: las reglas de victoria, intercambio, Pasa y acceso por código se detallan en [RevisionReglasCodigoSala.md](RevisionReglasCodigoSala.md). Esa revisión prevalece sobre las instrucciones históricas de este documento.
+
 # Fase 6 — Sincronización de estado
 
 ## 1. Objetivo de la fase

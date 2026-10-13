@@ -1,10 +1,13 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://Scripts/Presentation/Main.cs" id="1_main"]
 [ext_resource type="Script" path="res://Scripts/Networking/NetworkManager.cs" id="2_network"]
 [ext_resource type="PackedScene" path="res://Scenes/Carga.tscn" id="3_loading"]
 [ext_resource type="Texture2D" path="res://Assets/UI/MenuBackdrop.svg" id="4_background"]
 [ext_resource type="Script" path="res://Scripts/Singleplayer/LocalGameSession.cs" id="5_local"]
+
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/SalonBackground.png" id="6_salon"]
+[ext_resource type="Script" path="res://Scripts/Presentation/SalonFrame.cs" id="7_frame"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBox_panel"]
 bg_color = Color(0.07, 0.12, 0.17, 1)
@@ -49,6 +52,28 @@ mouse_filter = 2
 texture = ExtResource("4_background")
 expand_mode = 1
 stretch_mode = 6
+
+[node name="SalonBackground" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("6_salon")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="MenuFrame" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("7_frame")
 
 [node name="Margin" type="MarginContainer" parent="."]
 layout_mode = 1

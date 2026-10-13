@@ -279,6 +279,9 @@ public partial class Main : Control
         _lobby.Visible = next == "Lobby";
         _mesa.Visible = next == "Mesa";
         _singleplayer.Visible = next == "Singleplayer";
+        // El salón pertenece a la navegación. Mesa conserva su fondo anterior.
+        GetNode<Control>("SalonBackground").Visible = next != "Mesa";
+        GetNode<Control>("MenuFrame").Visible = next != "Mesa";
         if (changed) CallDeferred(MethodName.FocusScreen);
     }
 

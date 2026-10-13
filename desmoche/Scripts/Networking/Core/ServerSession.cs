@@ -22,6 +22,8 @@ public sealed class ServerSession
     private readonly Dictionary<long, Connection> _connections = new();
     private readonly HashSet<int> _departed = new();
     private int _nextPlayerId = 2;
+    private long _nowMilliseconds, _challengeDeadline, _timedChallengeId;
+    public const int PasaDurationMilliseconds = 3000;
     public string SessionId { get; } = Guid.NewGuid().ToString("N");
     public long Revision { get; private set; } = 1;
     public long Window { get; private set; } = 1;
@@ -71,6 +73,7 @@ public sealed class ServerSession
     // sender procede de GetRemoteSenderId; jamas del contenido enviado.
     public ReplyDto Receive(long sender, string json, long monotonicMilliseconds)
     {
+        Tick(monotonicMilliseconds);
         if (!_connections.TryGetValue(sender, out Connection? connection))
             return Reject(0, "Conexion no admitida.");
         long second = monotonicMilliseconds / 1000;
@@ -103,6 +106,7 @@ public sealed class ServerSession
             ActionKind.DrawDiscard => _game.DrawFromDiscard(actor, plays, c.DeclareWin),
             ActionKind.Claim => _game.SubmitClaim(actor, plays, c.DeclareWin, c.InitialKind),
             ActionKind.Pass => _game.PassClaim(actor),
+            ActionKind.SayPasa => _game.SayPasa(actor),
             ActionKind.Publish => _game.PublishMelds(actor, plays),
             ActionKind.Transfer => _game.TransferMeldCard(actor, c.SourceMeldId!.Value, c.CardId!.Value, plays[0]),
             ActionKind.DeclareDesmoche => _game.DeclareDesmoche(actor, plays),
@@ -116,6 +120,17 @@ public sealed class ServerSession
         Updated(before);
         return new ReplyDto(c.RequestId, result.Success, result.Message,
             result.Penalized, Revision);
+    }
+    // El tiempo procede del host, nunca de un paquete del cliente.
+    public bool Tick(long monotonicMilliseconds)
+    {
+        _nowMilliseconds = Math.Max(_nowMilliseconds, Math.Max(0, monotonicMilliseconds));
+        if (_game.Phase != GamePhase.AwaitingOrderChallenge || _nowMilliseconds < _challengeDeadline) return false;
+        var before = Context();
+        _game.ExpireOrderChallenge();
+        ResolveWhenReady();
+        Updated(before);
+        return true;
     }
     // Herramienta local del host. No hay RPC para que clientes expiren reclamos.
     public ReplyDto ExpireClaims()
@@ -143,6 +158,11 @@ public sealed class ServerSession
     private void Updated((GamePhase Phase, int? Current, int? Payment, int? Offer) before)
     {
         Revision++;
+        if (_game.Phase == GamePhase.AwaitingOrderChallenge && _timedChallengeId != _game.OrderChallengeId)
+        {
+            _timedChallengeId = _game.OrderChallengeId;
+            _challengeDeadline = _nowMilliseconds + PasaDurationMilliseconds;
+        }
         if (before != Context()) Window++;
     }
     private ReplyDto Reject(long request, string error) => new(request, false, error, false, Revision);
@@ -170,6 +190,12 @@ public sealed class ServerSession
                 m.Cards.Select(c => c.Id).ToArray())).ToArray() ?? Array.Empty<MeldDto>(),
             view?.DeckCount ?? 0, view?.DiscardCount ?? 0, view?.DiscardTop?.Id, view?.OfferedCard?.Id,
             view?.RevealedHands.Select(h => new RevealedHandDto(h.PlayerId,
-                h.Cards.Select(c => c.Id).ToArray())).ToArray() ?? Array.Empty<RevealedHandDto>(), submitted);
+                h.Cards.Select(c => c.Id).ToArray())).ToArray() ?? Array.Empty<RevealedHandDto>(), submitted,
+            _game.State?.ExchangeCount ?? 0,
+            _game.ChallengedPlayerId is int challenged ? new OrderChallengeDto(challenged,
+                _game.OrderChallengeId, (int)Math.Clamp(_challengeDeadline - _nowMilliseconds, 0, PasaDurationMilliseconds)) : null,
+            _game.IsOpeningOffer,
+            _game.WinningInitialKind is InitialVictoryKind initialKind
+                ? new InitialVictoryDto(initialKind, _game.WinningInitialCards.ToArray()) : null);
     }
 }

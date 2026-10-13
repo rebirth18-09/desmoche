@@ -78,12 +78,20 @@ public partial class MenuNavigationSmoke : Control
             Control menu = _main.GetNode<Control>("Margin/Screens/MenuPrincipal");
             Check(menu.IsVisibleInTree(), "MenuPrincipal visible despues de la carga.");
             Check(Descendants(menu).OfType<Label>().Any(label => label.Text == "DESMOCHE"), "Titulo DESMOCHE.");
-            Check(Descendants(menu).OfType<Label>().Any(label => label.Text == "Jugar"), "Subtitulo Jugar.");
+            Check(Descendants(menu).OfType<Button>().Any(button => button.Text == "Cómo jugar"), "Acceso a reglas disponible.");
             Button multiplayer = MenuButton("Multijugador");
-            Button singleplayer = Descendants(menu).OfType<Button>().Single(button => button.Text.Contains("Singleplayer", StringComparison.Ordinal));
+            Button singleplayer = Descendants(menu).OfType<Button>().Single(button => button.Name == "SingleplayerButton");
             Button exit = MenuButton("Salir");
             Check(!multiplayer.Disabled && !exit.Disabled, "Multijugador y Salir disponibles.");
             Check(!singleplayer.Disabled, "Singleplayer esta disponible.");
+            await Press(MenuButton("Cómo jugar"));
+            Check(menu.GetNode<Control>("HelpOverlay").Visible, "Las reglas se abren desde el botón real.");
+            await CaptureIfAvailable("ComoJugar-1600x900.png");
+            await Press(menu.GetNode<Button>("HelpOverlay/Center/Panel/Padding/Content/CloseButton"));
+            Check(!menu.GetNode<Control>("HelpOverlay").Visible, "Las reglas devuelven el foco al menú.");
+            await Press(menu.GetNode<Button>("SettingsButton"));
+            Check(menu.GetNode<Control>("SettingsOverlay").Visible, "El engranaje abre los ajustes.");
+            await Press(menu.GetNode<Button>("SettingsOverlay/Center/Panel/Padding/Content/CloseButton"));
             await Press(singleplayer);
             CheckScreen("Singleplayer");
             CheckOffline("Abrir Singleplayer conserva ENet desconectado.");
@@ -99,16 +107,18 @@ public partial class MenuNavigationSmoke : Control
 
             await PressLobby("OptionsPanel/CreateOption");
             CheckPanel("CreatePanel", "OptionsPanel", "JoinPanel", "SessionPanel");
+            await CaptureIfAvailable("CrearPartida-1600x900.png");
             _main.GetNode<LineEdit>(LobbyContent + "CreatePanel/NameInput").Text = "";
             await PressLobby("CreatePanel/Buttons/CreateButton");
             CheckInvalidForm("El nombre vacio impide crear una sala.");
-            await CaptureIfAvailable("CrearPartida-1600x900.png");
+            await CaptureIfAvailable("CrearPartida-Error-1600x900.png");
             await PressLobby("CreatePanel/Buttons/CancelButton");
             CheckPanel("OptionsPanel", "CreatePanel", "JoinPanel", "SessionPanel");
             CheckOffline("Cancelar crear no abre ni deja una sesion.");
 
             await PressLobby("OptionsPanel/JoinOption");
             CheckPanel("JoinPanel", "OptionsPanel", "CreatePanel", "SessionPanel");
+            await CaptureIfAvailable("UnirsePartida-1600x900.png");
             LineEdit name = _main.GetNode<LineEdit>(LobbyContent + "JoinPanel/NameInput");
             LineEdit address = _main.GetNode<LineEdit>(LobbyContent + "JoinPanel/IPInput");
             name.Text = "";
@@ -122,14 +132,14 @@ public partial class MenuNavigationSmoke : Control
                 await PressLobby("JoinPanel/Buttons/JoinButton");
                 CheckInvalidForm("La direccion '" + invalid + "' se rechaza antes de abrir ENet.");
             }
-            await CaptureIfAvailable("UnirsePartida-1600x900.png");
+            await CaptureIfAvailable("UnirsePartida-Error-1600x900.png");
             await PressLobby("JoinPanel/Buttons/CancelButton");
             CheckPanel("OptionsPanel", "CreatePanel", "JoinPanel", "SessionPanel");
             await PressLobby("OptionsPanel/BackButton");
             CheckScreen("Inicio");
             CheckOffline("Volver a Inicio conserva la red desconectada.");
 
-            foreach (Vector2I size in new[] { new Vector2I(640, 480), new Vector2I(976, 874), new Vector2I(1080, 1920) })
+            foreach (Vector2I size in new[] { new Vector2I(1100, 800), new Vector2I(640, 480), new Vector2I(976, 874), new Vector2I(1080, 1920) })
             {
                 _viewport.Size = size;
                 await Settle();
@@ -144,6 +154,11 @@ public partial class MenuNavigationSmoke : Control
                 await CaptureIfAvailable("Inicio-" + size.X + "x" + size.Y + ".png");
                 await Press(MenuButton("Multijugador"));
                 CheckPanel("OptionsPanel", "CreatePanel", "JoinPanel", "SessionPanel");
+                await CaptureIfAvailable("Multijugador-" + size.X + "x" + size.Y + ".png");
+                await PressLobby("OptionsPanel/CreateOption");
+                CheckPanel("CreatePanel", "OptionsPanel", "JoinPanel", "SessionPanel");
+                await CaptureIfAvailable("CrearPartida-" + size.X + "x" + size.Y + ".png");
+                await PressLobby("CreatePanel/Buttons/CancelButton");
                 await PressLobby("OptionsPanel/JoinOption");
                 CheckPanel("JoinPanel", "OptionsPanel", "CreatePanel", "SessionPanel");
                 Button join = _main.GetNode<Button>(LobbyContent + "JoinPanel/Buttons/JoinButton");

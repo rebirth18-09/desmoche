@@ -71,6 +71,12 @@ public sealed class LocalMatchController
     {
         if (!IsActive || _view.Phase == GamePhase.Finished) return false;
         long now = Clock(nowMilliseconds);
+        if (_authority.Tick(now))
+        {
+            _view = _authority.ViewFor(1);
+            if (_view.Phase == GamePhase.Finished) Status = "Partida local terminada.";
+            return true;
+        }
         if (now < _nextBotAt) return false;
         int[] ids = _bots.Keys.OrderBy(id => id).ToArray();
         for (int offset = 0; offset < ids.Length; offset++)

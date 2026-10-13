@@ -1,21 +1,12 @@
 [gd_scene load_steps=5 format=3]
 
-[ext_resource type="Script" path="res://Scripts/Presentation/StartupMenu.cs" id="1_script"]
-[ext_resource type="Theme" path="res://Assets/UI/MenuTheme.tres" id="2_theme"]
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/Gear.svg" id="gear"]
 
-[sub_resource type="SystemFont" id="Font_title"]
-font_names = PackedStringArray("Georgia", "Liberation Serif", "Noto Serif")
+[ext_resource type="Texture2D" path="res://Assets/UI/Salon/Divider.svg" id="divider"]
 
-[sub_resource type="StyleBoxFlat" id="Style_primary"]
-bg_color = Color(0.78, 0.59, 0.24, 1)
-corner_radius_top_left = 12
-corner_radius_top_right = 12
-corner_radius_bottom_left = 12
-corner_radius_bottom_right = 12
-content_margin_left = 20.0
-content_margin_top = 12.0
-content_margin_right = 20.0
-content_margin_bottom = 12.0
+[ext_resource type="Script" path="res://Scripts/Presentation/StartupMenu.cs" id="script"]
+
+[ext_resource type="Theme" path="res://Assets/UI/SalonTheme.tres" id="theme"]
 
 [node name="MenuPrincipal" type="Control"]
 layout_mode = 3
@@ -24,8 +15,8 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme = ExtResource("2_theme")
-script = ExtResource("1_script")
+theme = ExtResource("theme")
+script = ExtResource("script")
 
 [node name="Scroll" type="ScrollContainer" parent="."]
 layout_mode = 1
@@ -43,56 +34,228 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 
 [node name="Content" type="VBoxContainer" parent="Scroll/Center"]
-custom_minimum_size = Vector2(420, 0)
+custom_minimum_size = Vector2(620, 0)
 layout_mode = 2
-theme_override_constants/separation = 20
+theme_override_constants/separation = 14
 
 [node name="SuitsLabel" type="Label" parent="Scroll/Center/Content"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.76, 0.64, 0.4, 1)
-theme_override_font_sizes/font_size = 26
+mouse_filter = 2
+theme_override_font_sizes/font_size = 34
 text = "♠   ♥   ♦   ♣"
 horizontal_alignment = 1
+autowrap_mode = 3
+theme_override_colors/font_color = Color(0.95, 0.81, 0.47, 1)
 
 [node name="TitleLabel" type="Label" parent="Scroll/Center/Content"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.95, 0.81, 0.5, 1)
-theme_override_fonts/font = SubResource("Font_title")
-theme_override_font_sizes/font_size = 58
+mouse_filter = 2
+theme_override_font_sizes/font_size = 88
+theme_type_variation = &"GoldTitle"
 text = "DESMOCHE"
 horizontal_alignment = 1
+autowrap_mode = 3
 
-[node name="PlayLabel" type="Label" parent="Scroll/Center/Content"]
+
+[node name="Divider" type="TextureRect" parent="Scroll/Center/Content"]
+custom_minimum_size = Vector2(0, 20)
 layout_mode = 2
-theme_override_font_sizes/font_size = 26
-text = "Jugar"
-horizontal_alignment = 1
+mouse_filter = 2
+texture = ExtResource("divider")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="HeaderSpace" type="Control" parent="Scroll/Center/Content"]
+custom_minimum_size = Vector2(0, 26)
+layout_mode = 2
+mouse_filter = 2
 
 [node name="Buttons" type="VBoxContainer" parent="Scroll/Center/Content"]
 layout_mode = 2
+size_flags_horizontal = 4
+custom_minimum_size = Vector2(500, 0)
 theme_override_constants/separation = 12
 
 [node name="MultiplayerButton" type="Button" parent="Scroll/Center/Content/Buttons"]
-custom_minimum_size = Vector2(0, 58)
+custom_minimum_size = Vector2(0, 76)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.08, 0.11, 0.06, 1)
-theme_override_styles/normal = SubResource("Style_primary")
+theme_type_variation = &"PrimaryButton"
 text = "Multijugador"
 
-[node name="SingleplayerButton" type="Button" parent="Scroll/Center/Content/Buttons"]
-custom_minimum_size = Vector2(0, 54)
+
+[node name="NetworkHint" type="Label" parent="Scroll/Center/Content/Buttons"]
 layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+text = "2–4 jugadores · LAN / Wi-Fi"
+horizontal_alignment = 1
+autowrap_mode = 3
+theme_override_colors/font_color = Color(0.76, 0.8, 0.65, 1)
+
+[node name="ButtonSpace" type="Control" parent="Scroll/Center/Content/Buttons"]
+custom_minimum_size = Vector2(0, 14)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="SingleplayerButton" type="Button" parent="Scroll/Center/Content/Buttons"]
+custom_minimum_size = Vector2(0, 70)
+layout_mode = 2
+text = "Jugar contra bots"
 tooltip_text = "Juega en este dispositivo contra 1 a 3 bots."
-text = "Singleplayer"
+
+[node name="RulesButton" type="Button" parent="Scroll/Center/Content/Buttons"]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+theme_type_variation = &"MenuLink"
+text = "Cómo jugar"
+
+
+[node name="FooterSpace" type="Control" parent="Scroll/Center/Content/Buttons"]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+mouse_filter = 2
 
 [node name="QuitButton" type="Button" parent="Scroll/Center/Content/Buttons"]
-custom_minimum_size = Vector2(0, 54)
+custom_minimum_size = Vector2(0, 40)
 layout_mode = 2
+theme_type_variation = &"MenuLink"
 text = "Salir"
 
-[node name="FooterLabel" type="Label" parent="Scroll/Center/Content"]
+
+[node name="SettingsButton" type="Button" parent="."]
+custom_minimum_size = Vector2(0, 40)
+theme_type_variation = &"MenuLink"
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -65.0
+offset_top = 22.0
+offset_right = -20.0
+offset_bottom = 66.0
+icon = ExtResource("gear")
+theme_override_constants/icon_max_width = 29
+icon_alignment = 1
+text = ""
+tooltip_text = "Ajustes"
+
+[node name="HelpOverlay" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+visible = false
+color = Color(0, 0.02, 0.012, 0.8)
+
+[node name="Center" type="CenterContainer" parent="HelpOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="HelpOverlay/Center"]
+custom_minimum_size = Vector2(540, 0)
 layout_mode = 2
-theme_override_colors/font_color = Color(0.56, 0.7, 0.6, 1)
-theme_override_font_sizes/font_size = 16
-text = "2–4 jugadores · Contra bots o en LAN / Wi-Fi"
+
+[node name="Padding" type="MarginContainer" parent="HelpOverlay/Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_bottom = 28
+
+
+[node name="Content" type="VBoxContainer" parent="HelpOverlay/Center/Panel/Padding"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="HelpOverlay/Center/Panel/Padding/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 36
+theme_type_variation = &"GoldTitle"
+text = "Cómo jugar"
 horizontal_alignment = 1
+autowrap_mode = 3
+
+
+[node name="RulesText" type="Label" parent="HelpOverlay/Center/Panel/Padding/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+text = "• Se juega con 52 cartas, sin comodines, entre 2 y 4 participantes.\n\n• Empiezas con 9 cartas. Elige una para entregar a tu derecha; recibirás otra de tu izquierda.\n\n• Forma tercias, cuartas o escaleras del mismo palo.\n\n• Una carta reclamada debe usarse en un juego válido; después paga una carta, salvo victoria.\n\n• Ganas automáticamente con exactamente 10 cartas combinadas y ninguna carta suelta.\n\n• En tercias y cuartas alterna rojo y negro. Si no lo haces, tus rivales tienen 2 segundos para decir Pasa.\n\n• Al inicio puedes declarar A-2-3-4 o J-Q-K-A ordenadas del mismo palo. Tras el cambio también puedes declarar Color, con la mano del mismo color ordenada, o Peladilla, si no puedes formar ningún juego."
+autowrap_mode = 3
+
+
+[node name="CloseButton" type="Button" parent="HelpOverlay/Center/Panel/Padding/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+text = "Volver"
+
+
+[node name="SettingsOverlay" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+visible = false
+color = Color(0, 0.02, 0.012, 0.8)
+
+[node name="Center" type="CenterContainer" parent="SettingsOverlay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="SettingsOverlay/Center"]
+custom_minimum_size = Vector2(540, 0)
+layout_mode = 2
+
+[node name="Padding" type="MarginContainer" parent="SettingsOverlay/Center/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_bottom = 28
+
+
+[node name="Content" type="VBoxContainer" parent="SettingsOverlay/Center/Panel/Padding"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="SettingsOverlay/Center/Panel/Padding/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 36
+theme_type_variation = &"GoldTitle"
+text = "Ajustes"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+
+[node name="FullscreenButton" type="CheckButton" parent="SettingsOverlay/Center/Panel/Padding/Content"]
+layout_mode = 2
+text = "Pantalla completa"
+
+[node name="SettingsHint" type="Label" parent="SettingsOverlay/Center/Panel/Padding/Content"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 18
+text = "Los ajustes se aplican durante esta sesión.\nEsc cierra este panel."
+horizontal_alignment = 1
+autowrap_mode = 3
+
+
+[node name="CloseButton" type="Button" parent="SettingsOverlay/Center/Panel/Padding/Content"]
+custom_minimum_size = Vector2(0, 48)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+text = "Volver"

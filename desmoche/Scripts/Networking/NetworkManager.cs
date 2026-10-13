@@ -8,13 +8,16 @@ using Godot;
 
 namespace Desmoche.Networking;
 
-public enum ConnectionState { Offline, Connecting, Handshaking, Hosting, Connected }
+public enum ConnectionState { Offline, Connecting, Handshaking, Hosting, Connected, Searching }
 
 // Main/NetworkManager permanece en la misma ruta durante toda la sesion.
 public partial class NetworkManager : Node, IGameSession
 {
     private ENetMultiplayerPeer? _peer;
     private ServerSession? _server;
+    private LanRoomDiscovery? _discovery;
+    private string _expectedRoomCode = "";
+    public string RoomCode { get; private set; } = "";
     private Node _replicaRoot = null!;
     private MultiplayerSpawner _spawner = null!;
     private PublicMatchReplica? _replica;
@@ -72,6 +75,11 @@ public partial class NetworkManager : Node, IGameSession
         var peer = new ENetMultiplayerPeer();
         Error error = peer.CreateServer(port, 3);
         if (error != Error.Ok) { peer.Dispose(); return error; }
+        string roomCode = RoomCodeProtocol.CreateCode();
+        var discovery = new LanRoomDiscovery();
+        error = discovery.Advertise(roomCode, port);
+        if (error != Error.Ok) { discovery.Dispose(); peer.Close(); peer.Dispose(); return error; }
+        _discovery = discovery; RoomCode = roomCode;
         _server = new ServerSession(name);
         _acceptedSession = _server.SessionId;
         _assembler.Start(_acceptedSession, 1);
@@ -95,6 +103,18 @@ public partial class NetworkManager : Node, IGameSession
         Multiplayer.MultiplayerPeer = peer;
         _deadline = Time.GetTicksMsec() + 10000;
         ChangeState(ConnectionState.Connecting, "Conectando con el host.");
+        return Error.Ok;
+    }
+    public Error JoinByCode(string code, string name)
+    {
+        code = RoomCodeProtocol.Normalize(code);
+        if (!_ready || State != ConnectionState.Offline) return Error.AlreadyInUse;
+        if (!RoomCodeProtocol.IsCode(code) || !NetworkProtocol.ValidName(name)) return Error.InvalidParameter;
+        var discovery = new LanRoomDiscovery();
+        Error error = discovery.Search(code, Time.GetTicksMsec());
+        if (error != Error.Ok) { discovery.Dispose(); return error; }
+        _discovery = discovery; _name = name.Trim(); _expectedRoomCode = code; RoomCode = code;
+        ChangeState(ConnectionState.Searching, "Buscando sala " + code + " en la red local…");
         return Error.Ok;
     }
     private void ConfigureApi()
@@ -130,6 +150,8 @@ public partial class NetworkManager : Node, IGameSession
         if (_peer is not null &&
             _peer.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connecting)
             _peer.GetPeer(1)?.PeerDisconnectNow(0);
+        _discovery?.Dispose(); _discovery = null;
+        RoomCode = _expectedRoomCode = "";
         _server = null;
         _pending.Clear(); _closing.Clear(); _invalid.Clear(); _localCommands.Clear();
         _replies.Clear(); _assembler.Reset();
@@ -163,9 +185,19 @@ public partial class NetworkManager : Node, IGameSession
     public override void _Process(double delta)
     {
         ulong now = Time.GetTicksMsec();
+        if (_discovery?.Poll(now, _server?.AcceptingPlayers == true) is LanRoomDiscovery.SearchResult found &&
+            State == ConnectionState.Searching)
+        {
+            _discovery.Dispose(); _discovery = null;
+            if (found.Error is not null) { Close(found.Error); return; }
+            State = ConnectionState.Offline; // Join emite el siguiente estado sin un Offline intermedio visible.
+            Error error = Join(found.Address!, _name, found.Port);
+            if (error != Error.Ok) { Close("No se pudo conectar con la sala encontrada."); return; }
+        }
         if (State is ConnectionState.Connecting or ConnectionState.Handshaking && now >= _deadline)
             Close("No se pudo completar la conexion y sincronizacion en 10 segundos.");
         if (!IsHost) return;
+        if (_server!.Tick((long)now)) BroadcastViews();
         foreach (long id in _pending.Where(p => now >= p.Value).Select(p => p.Key).ToArray()) Drop(id);
         foreach (long id in _closing.Where(p => now >= p.Value).Select(p => p.Key).ToArray()) Drop(id);
         for (int i = 0; i < 32 && IsHost && _localCommands.TryDequeue(out var action); i++)
@@ -201,21 +233,23 @@ public partial class NetworkManager : Node, IGameSession
         ENetMultiplayerPeer? peer = _peer;
         ChangeState(ConnectionState.Handshaking, "Comprobando protocolo y sala.");
         if (ReferenceEquals(_peer, peer) && State == ConnectionState.Handshaking)
-            RpcId(1, MethodName.Hello, NetworkProtocol.Version, _name);
+            RpcId(1, MethodName.Hello, NetworkProtocol.Version, _name, _expectedRoomCode);
     }
     private void OnConnectionFailed() => Close("No fue posible conectar con el host.");
     private void OnServerDisconnected() => Close("El host se desconecto. La sesion termino.");
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, CallLocal = false,
         TransferMode = MultiplayerPeer.TransferModeEnum.Reliable, TransferChannel = 0)]
-    private void Hello(int version, string name)
+    private void Hello(int version, string name, string roomCode)
     {
         if (!IsHost) return;
         int sender = Multiplayer.GetRemoteSenderId();
         if (!_pending.Remove(sender)) { if (sender > 1) Drop(sender); return; }
-        bool accepted = _server!.Join(sender, version, name, out string error);
+        string error = "El código no corresponde a esta sala.";
+        bool accepted = (roomCode == "" || roomCode == RoomCode) &&
+            _server!.Join(sender, version, name, out error);
         string message = accepted ? NetworkProtocol.Encode(new AdmissionDto(NetworkProtocol.Version,
-            _server.SessionId, _server.ViewFor(sender).RecipientId)) : error;
+            _server!.SessionId, _server.ViewFor(sender).RecipientId)) : error;
         RpcId(sender, MethodName.Admission, accepted, message);
         if (accepted) BroadcastViews();
         else _closing[sender] = Time.GetTicksMsec() + 500;
