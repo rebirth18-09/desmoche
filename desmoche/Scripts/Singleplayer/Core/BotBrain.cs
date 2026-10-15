@@ -115,10 +115,10 @@ public sealed class BotBrain
         if (offer is null && !beforeExchange)
         {
             Card[] orderedHand = hand.Cards.OrderBy(c => (int)c.Rank).ThenBy(c => c.Id).ToArray();
-            if (RulesValidator.ValidateInitialVictory(hand, InitialVictoryKind.Color, orderedHand).IsValid)
+            if ((view.Settings ?? MatchSettings.Default).ColorEnabled && RulesValidator.ValidateInitialVictory(hand, InitialVictoryKind.Color, orderedHand).IsValid)
                 return new BotAction(ActionKind.DeclareInitial, InitialKind: InitialVictoryKind.Color,
                     Cards: orderedHand.Select(c => c.Id).ToArray());
-            if (RulesValidator.ValidateInitialVictory(hand, InitialVictoryKind.Peladilla).IsValid)
+            if ((view.Settings ?? MatchSettings.Default).PeladillaEnabled && RulesValidator.ValidateInitialVictory(hand, InitialVictoryKind.Peladilla).IsValid)
                 return new BotAction(ActionKind.DeclareInitial, InitialKind: InitialVictoryKind.Peladilla);
         }
         int[] cards = (offer is int id ? view.OwnHand.Append(id) : view.OwnHand).OrderBy(id => id).ToArray();
@@ -128,7 +128,7 @@ public sealed class BotBrain
             foreach (InitialVictoryKind kind in new[]
                      { InitialVictoryKind.Cuarta, InitialVictoryKind.LowStraight, InitialVictoryKind.HighStraight })
             {
-                if (beforeExchange && kind == InitialVictoryKind.Cuarta) continue;
+                if (!(view.Settings ?? MatchSettings.Default).Allows(kind) || beforeExchange && kind == InitialVictoryKind.Cuarta) continue;
                 if (!RulesValidator.ValidateInitialVictory(hand, kind,
                         candidate.Play.Cards.Select(Card.FromId).ToArray(),
                         offer is int offered ? Card.FromId(offered) : null).IsValid) continue;

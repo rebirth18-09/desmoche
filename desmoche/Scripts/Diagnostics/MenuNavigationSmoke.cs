@@ -87,11 +87,11 @@ public partial class MenuNavigationSmoke : Control
             await Press(MenuButton("Cómo jugar"));
             Check(menu.GetNode<Control>("HelpOverlay").Visible, "Las reglas se abren desde el botón real.");
             await CaptureIfAvailable("ComoJugar-1600x900.png");
-            await Press(menu.GetNode<Button>("HelpOverlay/Center/Panel/Padding/Content/CloseButton"));
+            await Press(menu.GetNode<Button>("HelpOverlay/Scroll/Center/Panel/Padding/Content/CloseButton"));
             Check(!menu.GetNode<Control>("HelpOverlay").Visible, "Las reglas devuelven el foco al menú.");
             await Press(menu.GetNode<Button>("SettingsButton"));
             Check(menu.GetNode<Control>("SettingsOverlay").Visible, "El engranaje abre los ajustes.");
-            await Press(menu.GetNode<Button>("SettingsOverlay/Center/Panel/Padding/Content/CloseButton"));
+            await Press(menu.GetNode<Button>("SettingsOverlay/Scroll/Center/Panel/Padding/Content/CloseButton"));
             await Press(singleplayer);
             CheckScreen("Singleplayer");
             CheckOffline("Abrir Singleplayer conserva ENet desconectado.");

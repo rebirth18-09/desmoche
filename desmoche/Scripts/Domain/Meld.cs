@@ -24,7 +24,8 @@ public sealed class Meld
     }
 }
 
-// Solicitud: grupo nuevo si MeldId es null; extension si tiene Id.
+// Solicitud: grupo nuevo si MeldId es null; resultado de un juego propio si tiene Id.
+// Un traslado incluye tambien el origen reducido, conservando un juego valido.
 // CardIds describe el grupo completo en el orden declarado.
 public sealed class MeldPlay
 {

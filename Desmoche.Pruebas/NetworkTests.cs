@@ -310,7 +310,7 @@ public static class NetworkTests
         Check(!noWinner.Send(1, ActionKind.DeclareInitial, initial: InitialVictoryKind.Cuarta).Success, "Primera declaracion invalida");
         Check(!noWinner.Send(noWinner.Peers[1], ActionKind.DeclareInitial, initial: InitialVictoryKind.Cuarta).Success, "Segunda declaracion invalida");
         Check(noWinner.View().Phase == GamePhase.Finished && noWinner.View().Result == MatchResult.Draw &&
-            noWinner.View().RevealedHands.Length == 0, "Empate sin ganador no revela cartas");
+            noWinner.View().RevealedHands.Length == 2, "Empate final revela las manos para su consulta");
     }
 
     // Fixture solo de pruebas: el campo privado permite suministrar un mazo conocido

@@ -117,6 +117,7 @@ public partial class SingleplayerSmoke : Control
                 ValidateCards(view);
                 CheckOffline("Una partida local no crea peer ENet ni réplica de red.");
                 string priorSession = view.Session;
+                await Press(_mesa.GetNode<Button>(Mesa.TableStatusPath + "/MenuButton"));
                 await Press(_mesa.GetNode<Button>(Mesa.ContentPath + "TopBar/LeaveButton"));
                 CheckScreen("Singleplayer");
                 Check(!_local.IsActive && _local.View is null, "Salir destruye la sesión local y su vista privada.");
@@ -135,6 +136,7 @@ public partial class SingleplayerSmoke : Control
             _local.Close();
             _local.Start(new LocalMatchOptions("Ricardo", 3, BotDifficulty.Medium), 37);
             _local.SetProcess(true);
+            await Until(() => !_mesa.IsDealing, "El reparto visual termina antes de habilitar el cambio.", 6000);
             await Settle();
             SnapshotDto exchange = View();
             CardDropZone slot = _mesa.GetNode<CardDropZone>(Mesa.CenterPath + "Pago");
@@ -349,6 +351,8 @@ public partial class SingleplayerSmoke : Control
                 "Centro accesible para input: " + button.Name + ".");
             _viewport.PushInput(new InputEventMouseMotion { Position = position, GlobalPosition = position }, true);
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            if (button.Name == "LeaveButton")
+                GD.Print("EXIT INPUT HOVER: " + _viewport.GuiGetHoveredControl()?.GetPath());
             _viewport.PushInput(new InputEventMouseButton
             { Position = position, GlobalPosition = position, ButtonIndex = MouseButton.Left,
                 ButtonMask = MouseButtonMask.Left, Pressed = true }, true);

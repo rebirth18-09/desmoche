@@ -67,6 +67,14 @@ public static class RulesValidator
 			: Fail(RuleError.InvalidMeld);
 	}
 
+	public static bool CanExtendMeld(IReadOnlyList<Card> cards, Card offered)
+	{
+		Card[] extended = cards.Append(offered).ToArray();
+		return ValidateMeld(extended).IsValid ||
+			ValidateMeld(extended.OrderBy(c => (int)c.Rank).ToArray()).IsValid ||
+			ValidateMeld(extended.OrderBy(c => c.Rank == Rank.Ace ? 14 : (int)c.Rank).ToArray()).IsValid;
+	}
+
 	public static RuleValidationResult ValidateGroups(
 		IReadOnlyList<IReadOnlyList<Card>>? groups)
 	{
@@ -303,8 +311,9 @@ public static class RulesValidator
 
 	public static bool IsPeladilla(IReadOnlyList<Card> cards)
 	{
-		// Solo se consideran juegos presentes en la mano, sin importar su orden.
-		if (cards.GroupBy(c => c.Rank).Any(g => g.Count() >= 3))
+		// Sin juegos actuales ni proyectos que complete una carta ausente de la mano.
+		// Se considera cualquier seleccion y orden, sin consultar el mazo oculto.
+		if (cards.GroupBy(c => c.Rank).Any(g => g.Count() >= 2))
 			return false;
 
 		foreach (Suit suit in Enum.GetValues<Suit>())
@@ -325,7 +334,7 @@ public static class RulesValidator
 						present++;
 				}
 
-				if (present == 3)
+				if (present >= 2)
 					return false;
 			}
 		}

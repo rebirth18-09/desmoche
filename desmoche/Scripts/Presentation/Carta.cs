@@ -19,12 +19,18 @@ public partial class Carta : PanelContainer
     private MarginContainer _padding = null!;
     private CartaArtwork _artwork = null!;
     private StyleBoxFlat _faceStyle = null!, _selectedStyle = null!, _backStyle = null!, _emptyStyle = null!;
+    private StyleBoxFlat _raisedStyle = null!, _greenStyle = null!;
+    private Tween? _selectionTween;
+    private Tween? _reorderTween;
+    private Vector2 _reorderTarget;
+    private bool _handSelected, _greenSelection;
     private bool _ready, _interactive, _selected, _pressed, _dragStarted;
     private bool _updatingMetrics;
 
     public int? FaceCardId => _mode == DisplayMode.Face ? _card?.Id : null;
     public bool IsFaceUp => _mode == DisplayMode.Face;
     public bool IsBack => _mode == DisplayMode.Back;
+    public bool HasGameIndicator => _greenSelection && Selected;
 
     public bool Interactive
     {
@@ -34,13 +40,21 @@ public partial class Carta : PanelContainer
     public bool Selected
     {
         get => _selected && FaceCardId.HasValue;
-        set { _selected = value && FaceCardId.HasValue; Refresh(); }
+        set
+        {
+            bool selected = value && FaceCardId.HasValue;
+            if (_selected == selected) return;
+            _selected = selected;
+            Refresh();
+        }
     }
 
     // Son callbacks locales configurados por Mesa; no viajan por la red.
     public Func<Variant>? DragDataRequested { get; set; }
     public Func<Vector2, Variant, bool>? DropAllowed { get; set; }
     public Action<Vector2, Variant>? DropReceived { get; set; }
+    public Action<Carta>? DragPreviewCreated { get; set; }
+    public Action<bool>? DragCompleted { get; set; }
 
     public override void _Ready()
     {
@@ -64,6 +78,13 @@ public partial class Carta : PanelContainer
         _selectedStyle.BorderColor = new Color(1f, 0.77f, 0.20f);
         _selectedStyle.BorderWidthLeft = _selectedStyle.BorderWidthTop = 3;
         _selectedStyle.BorderWidthRight = _selectedStyle.BorderWidthBottom = 3;
+        _raisedStyle = (StyleBoxFlat)_faceStyle.Duplicate();
+        _raisedStyle.ShadowSize = 7;
+        _raisedStyle.ShadowOffset = new Vector2(1, 5);
+        _greenStyle = (StyleBoxFlat)_raisedStyle.Duplicate();
+        _greenStyle.BorderColor = new Color(0.25f, 0.86f, 0.43f);
+        _greenStyle.BorderWidthLeft = _greenStyle.BorderWidthTop = 3;
+        _greenStyle.BorderWidthRight = _greenStyle.BorderWidthBottom = 3;
         _backStyle = Style(new Color(0.045f, 0.095f, 0.22f), new Color(0.89f, 0.88f, 0.75f));
         _emptyStyle = Style(new Color(0.015f, 0.09f, 0.07f, 0.38f), new Color(0.28f, 0.45f, 0.36f, 0.6f));
         _ready = true;
@@ -78,6 +99,56 @@ public partial class Carta : PanelContainer
     {
         Interactive = enabled;
         Selected = selected;
+    }
+
+    public void SetHandSelection(bool selected, bool formsGame)
+    {
+        selected &= Interactive;
+        bool green = selected && formsGame;
+        bool changed = _handSelected != selected;
+        bool recolor = _greenSelection != green;
+        _handSelected = selected; _greenSelection = green;
+        OffsetTransformEnabled = true;
+        // Godot 4.7: desplazamiento independiente del layout y del tamaño.
+        // El área de input acompaña a la carta elevada.
+        OffsetTransformVisualOnly = false;
+        if (changed)
+        {
+            _selectionTween?.Kill();
+            _selectionTween = CreateTween().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+            _selectionTween.TweenProperty(this, "offset_transform_position_ratio",
+                new Vector2(0, selected ? -0.18f : 0), 0.16);
+        }
+        if (changed || recolor) Refresh();
+    }
+
+    public void SetGameIndicator(bool formsGame)
+    {
+        bool green = formsGame && Selected;
+        if (_greenSelection == green) return;
+        _greenSelection = green;
+        Refresh();
+    }
+
+    // Independiente de la elevación proporcional de selección. El contenedor
+    // conserva sus posiciones; esta transformación mueve también el input.
+    public void SetReorderOffset(Vector2 offset, bool animate = true)
+    {
+        OffsetTransformEnabled = true; OffsetTransformVisualOnly = false;
+        if (animate && _reorderTarget.IsEqualApprox(offset)) return;
+        _reorderTarget = offset; _reorderTween?.Kill(); _reorderTween = null;
+        if (!animate || !IsInsideTree()) { OffsetTransformPosition = offset; return; }
+        _reorderTween = CreateTween().SetTrans(Tween.TransitionType.Cubic).SetEase(Tween.EaseType.Out);
+        _reorderTween.TweenProperty(this, "offset_transform_position", offset, 0.16);
+    }
+
+    private void ResetHandSelection()
+    {
+        _selectionTween?.Kill(); _selectionTween = null;
+        _handSelected = _greenSelection = false;
+        OffsetTransformPositionRatio = Vector2.Zero;
+        _reorderTween?.Kill(); _reorderTween = null; _reorderTarget = Vector2.Zero;
+        OffsetTransformPosition = Vector2.Zero;
     }
 
     // Cambia dimensiones reales del Control; índices y arte mantienen su proporción sin Scale.
@@ -123,7 +194,7 @@ public partial class Carta : PanelContainer
 
     public void ShowFace(int cardId)
     {
-        if (FaceCardId != cardId) _selected = false;
+        if (FaceCardId != cardId) { _selected = false; ResetHandSelection(); }
         _card = Card.FromId(cardId);
         _mode = DisplayMode.Face;
         Refresh();
@@ -182,17 +253,23 @@ public partial class Carta : PanelContainer
         Variant data = DragDataRequested();
         if (data.VariantType == Variant.Type.Nil) return default;
 
-        // El original permanece en la mano. Godot libera este preview al acabar el drag.
-        var previewRoot = new Control { MouseFilter = MouseFilterEnum.Ignore };
+        // Mesa oculta visualmente el origen de mano conservando su espacio.
+        // Godot libera este preview al acabar el arrastre.
+        var previewRoot = new Control { MouseFilter = MouseFilterEnum.Ignore, ZIndex = 50 };
         Carta preview = GD.Load<PackedScene>("res://Scenes/Carta.tscn").Instantiate<Carta>();
-        Vector2 previewSize = Size * GetGlobalTransform().Scale.Abs();
-        preview.SetVisualSize(previewSize);
+        Vector2 previewScale = GetGlobalTransform().Scale.Abs();
+        // Mantener las métricas del original y escalar todo su arte. Reducir
+        // el tamaño lógico activaría los mínimos de Carta en pantallas chicas.
+        preview.SetVisualSize(Size);
+        preview.Scale = previewScale;
         preview.ShowFace(cardId);
         preview.SetInteraction(false, Selected);
-        preview.Position = -previewSize * 0.5f;
+        preview.SetGameIndicator(HasGameIndicator);
+        preview.Position = -Size * previewScale * 0.5f;
         previewRoot.AddChild(preview);
         _dragStarted = true;
         SetDragPreview(previewRoot);
+        DragPreviewCreated?.Invoke(preview);
         return data;
     }
 
@@ -207,7 +284,11 @@ public partial class Carta : PanelContainer
     public override void _Notification(int what)
     {
         // La notificación puede llegar antes del release. No confundir soltar con seleccionar.
-        if (what == NotificationDragEnd && _dragStarted) _pressed = false;
+        if (what == NotificationDragEnd && _dragStarted)
+        {
+            _pressed = false; _dragStarted = false;
+            DragCompleted?.Invoke(GetViewport().GuiIsDragSuccessful());
+        }
     }
 
     public override void _ExitTree()
@@ -219,10 +300,12 @@ public partial class Carta : PanelContainer
 
     private void ClearInteraction()
     {
+        ResetHandSelection();
         _interactive = _selected = _pressed = _dragStarted = false;
         DragDataRequested = null;
         DropAllowed = null;
         DropReceived = null;
+        DragPreviewCreated = null; DragCompleted = null;
         ApplyInteraction();
     }
 
@@ -249,7 +332,8 @@ public partial class Carta : PanelContainer
             _symbol.Text = "";
             _caption.Text = "";
             TooltipText = RankText(card.Rank) + " de " + SuitName(card.Suit).ToLowerInvariant();
-            AddThemeStyleboxOverride("panel", Selected ? _selectedStyle : _faceStyle);
+            AddThemeStyleboxOverride("panel", HasGameIndicator ? _greenStyle :
+                _handSelected ? _raisedStyle : Selected ? _selectedStyle : _faceStyle);
             _artwork.ShowFace(card.Suit, card.Rank, ink);
         }
         else

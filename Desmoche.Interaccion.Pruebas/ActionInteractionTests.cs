@@ -256,9 +256,18 @@ public static class ActionInteractionTests
             "Un juego oculto permite mostrar Peladilla pero el servidor rechaza la declaración.");
         Check(InitialHandPresentation.HasVisibleMeld(ordered.Select(Card.FromId).ToArray()),
             "Un juego visible oculta Peladilla.");
+        int[] paired = { 1, 14, 29, 44, 7, 22, 37, 51, 10 };
+        Check(!InitialHandPresentation.HasVisibleMeld(paired.Select(Card.FromId).ToArray()) &&
+            !RulesValidator.IsPeladilla(paired.Select(Card.FromId).ToArray()),
+            "Una pareja sin juego visible permite mostrar Peladilla, pero la declaracion es falsa.");
         SnapshotDto challenge = View() with { Phase = GamePhase.AwaitingOrderChallenge,
             OrderChallenge = new OrderChallengeDto(2, 1, 2000) };
         Check(InteractionActions.CanRequest(challenge, ActionKind.SayPasa), "Pasa disponible para el rival.");
+        SnapshotDto unused = challenge with { OrderChallenge = new OrderChallengeDto(2, 2, 3000, PasaReason.UnusedOffer, 1) };
+        Check(InteractionActions.CanRequest(unused, ActionKind.SayPasa), "La oferta sin jugar habilita Pasa para los demás.");
+        Check(!InteractionActions.CanRequest(unused with { RecipientId = 2 }, ActionKind.SayPasa), "El infractor de oferta no puede denunciarse.");
+        Check(!InteractionActions.CanRequest(unused, ActionKind.Pass) && !InteractionActions.CanRequest(unused, ActionKind.Claim),
+            "La denuncia pausa los reclamos y rechazos de oferta.");
         Check(!InteractionActions.CanRequest(challenge with { RecipientId = 2 }, ActionKind.SayPasa),
             "El infractor no puede presionar Pasa sobre su propio juego.");
         Check(!InteractionActions.CanRequest(challenge with { Players = challenge.Players.Select(p =>

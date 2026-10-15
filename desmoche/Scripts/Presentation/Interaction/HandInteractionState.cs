@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Desmoche.Application;
+using Desmoche.Domain;
 using Desmoche.Networking.Core;
 
 namespace Desmoche.Presentation.Interaction;
@@ -24,7 +25,8 @@ public sealed class VisualGroupDraft
 }
 
 // Estado de presentacion exclusivamente local: orden, seleccion y borradores.
-// No contiene GameManager, RPC, cartas rivales ni reglas de combinaciones.
+// No contiene GameManager, RPC ni cartas rivales. Solo anticipa si un origen
+// puede reducirse; la autoridad valida el resultado completo de cada intencion.
 public sealed class HandInteractionState
 {
     private readonly List<int> _order = new();
@@ -69,7 +71,7 @@ public sealed class HandInteractionState
         if (eligible && !view.OwnResponseSubmitted &&
             view.Phase == GamePhase.AwaitingClaims)
             external = view.OfferedCard;
-        else if (eligible && view.Phase == GamePhase.AwaitingDraw &&
+        else if (eligible && !view.MustDrawDeck && view.Phase == GamePhase.AwaitingDraw &&
             view.CurrentPlayerId == view.RecipientId)
             external = view.DiscardTop;
         if (external is < 0 or > 51 || external is int source && hand.Contains(source))
@@ -166,10 +168,15 @@ public sealed class HandInteractionState
             groupIndex is < 0 || groupIndex >= _groups.Count) return false;
         bool fromHand = _order.Contains(draggedId);
         bool fromExternal = _external == draggedId;
-        if ((!fromHand && !fromExternal) || Assigned(draggedId)) return false;
+        bool fromPublished = !fromHand && !fromExternal;
+        int donorId = 0, donorIndex = -1;
+        int[] remainder = Array.Empty<int>();
+        if (fromPublished && !PublishedSource(draggedId, out donorId, out donorIndex, out remainder)) return false;
+        if (!fromPublished && Assigned(draggedId)) return false;
 
         var additions = new List<int>();
-        if (fromExternal || _selected.Contains(draggedId))
+        if (fromPublished) additions.Add(draggedId);
+        if (fromExternal || fromPublished || _selected.Contains(draggedId))
             additions.AddRange(_order.Where(_selected.Contains));
         else
             additions.Add(draggedId);
@@ -179,7 +186,8 @@ public sealed class HandInteractionState
             additions.Add(external);
         }
         if (additions.Count == 0 || additions.Distinct().Count() != additions.Count ||
-            additions.Any(id => (!_order.Contains(id) && _external != id) || Assigned(id)))
+            additions.Any(id => (!_order.Contains(id) && _external != id && !(fromPublished && id == draggedId)) ||
+                Assigned(id) && !(fromPublished && id == draggedId)))
             return false;
 
         int index = groupIndex ?? -1;
@@ -204,7 +212,9 @@ public sealed class HandInteractionState
                 destination.AddRange(published);
             }
         }
-        if (index < 0 && _groups.Count >= 17) return false;
+        if (fromPublished && meldId == donorId) return false;
+        int newGroups = (index < 0 ? 1 : 0) + (fromPublished && donorIndex < 0 ? 1 : 0);
+        if (_groups.Count + newGroups > 17) return false;
         int insertion = beforeIndex ?? destination.Count;
         if (insertion < 0 || insertion > destination.Count ||
             destination.Count + additions.Count > 13) return false;
@@ -212,6 +222,12 @@ public sealed class HandInteractionState
         if (destination.Distinct().Count() != destination.Count) return false;
 
         var draft = new VisualGroupDraft(destination, meldId);
+        if (fromPublished)
+        {
+            var donor = new VisualGroupDraft(remainder, donorId);
+            if (donorIndex < 0) _groups.Add(donor);
+            else _groups[donorIndex] = donor;
+        }
         if (index < 0) _groups.Add(draft);
         else _groups[index] = draft;
         ClearSelection();
@@ -220,7 +236,7 @@ public sealed class HandInteractionState
 
     // Deshacer una colocacion no devuelve cartas del servidor: libera solo la
     // carta privada o externa que se habia preparado localmente. Una extension
-    // conserva siempre todas las cartas del juego ya publicado.
+    // conserva las cartas publicadas que permanecen en el origen del traslado.
     public bool ReturnToHand(int groupIndex, int cardId)
     {
         if (groupIndex < 0 || groupIndex >= _groups.Count ||
@@ -236,7 +252,7 @@ public sealed class HandInteractionState
         var cards = group.CopyCards().ToList();
         if (!cards.Remove(cardId)) return false;
         if (cards.Count == 0 || (group.MeldId is not null &&
-                cards.All(published.Contains)))
+                cards.Count == published.Length && cards.All(published.Contains)))
             _groups.RemoveAt(groupIndex);
         else
             _groups[groupIndex] = new VisualGroupDraft(cards, group.MeldId);
@@ -256,8 +272,46 @@ public sealed class HandInteractionState
     public bool RemoveGroup(int groupIndex)
     {
         if (groupIndex < 0 || groupIndex >= _groups.Count) return false;
-        _groups.RemoveAt(groupIndex);
+        // Origen y destino de un traslado se cancelan juntos; los borradores
+        // independientes permanecen. Nunca queda una reduccion sin destino.
+        var remove = new HashSet<int> { groupIndex };
+        bool changed;
+        do
+        {
+            changed = false;
+            for (int i = 0; i < _groups.Count; i++)
+                foreach (var meld in _ownMelds)
+                {
+                    if (_groups[i].MeldId == meld.Key || !_groups[i].Cards.Any(meld.Value.Contains)) continue;
+                    int source = _groups.FindIndex(g => g.MeldId == meld.Key);
+                    if (source >= 0 && (remove.Contains(i) || remove.Contains(source)))
+                    { changed |= remove.Add(i); changed |= remove.Add(source); }
+                }
+        } while (changed);
+        foreach (int index in remove.OrderByDescending(i => i)) _groups.RemoveAt(index);
         return true;
+    }
+
+    public bool CanStagePublishedCard(int cardId) => PublishedSource(cardId, out _, out _, out _);
+
+    private bool PublishedSource(int cardId, out int meldId, out int groupIndex, out int[] remainder)
+    {
+        meldId = 0; groupIndex = -1; remainder = Array.Empty<int>();
+        foreach (var meld in _ownMelds)
+        {
+            if (!meld.Value.Contains(cardId)) continue;
+            meldId = meld.Key;
+            groupIndex = _groups.FindIndex(g => g.MeldId == meld.Key);
+            int sourceIndex = groupIndex;
+            int[] current = groupIndex >= 0 ? _groups[groupIndex].CopyCards() : meld.Value;
+            if (!current.Contains(cardId) || _groups.Where((_, i) => i != sourceIndex).Any(g => g.Cards.Contains(cardId))) return false;
+            remainder = current.Where(id => id != cardId).ToArray();
+            // Solo anticipa si el origen puede seguir publicado. El servidor
+            // vuelve a validar origen, destino, propiedad y toda la transaccion.
+            Card[] retained = meld.Value.Where(id => id != cardId && current.Contains(id)).Select(Card.FromId).ToArray();
+            return RulesValidator.ValidateMeld(retained).IsValid;
+        }
+        return false;
     }
 
     public void ClearSelection()

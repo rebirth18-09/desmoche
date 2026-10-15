@@ -25,6 +25,38 @@ internal static class Program
         try { action(); } catch (T) { Check(true, name); return; }
         Check(false, name);
     }
+    private static void InitialDealDelayChecks()
+    {
+        var delayed = new LocalMatchController(new LocalMatchOptions("Humano", 1, BotDifficulty.Medium),
+            seed: 37, initialBotDelayMilliseconds: 4000);
+        SnapshotDto before = delayed.View;
+        Check(!delayed.Tick(3999) && delayed.View.Revision == before.Revision,
+            "El primer bot espera a que termine el reparto visual.");
+        Check(delayed.Tick(4000) && delayed.View.Revision > before.Revision && delayed.BotRejectedActions == 0,
+            "El bot toma su primera decisión normalmente tras el reparto.");
+        delayed.Close();
+    }
+
+    private static void MatchSettingsChecks()
+    {
+        var settings = new MatchSettings(9, 60, 6, 25, false, false, false, false, false);
+        int[][] hands = { new[] {0,1,2,3,6,18,28,44,51}, new[] {10,11,12,0,6,18,28,44,51},
+            new[] {5,18,44,31,6,7,8,9,10}, Enumerable.Range(13,9).ToArray(), new[] {1,5,9,15,19,23,29,33,37} };
+        foreach (BotDifficulty difficulty in Enum.GetValues<BotDifficulty>())
+        foreach (int[] hand in hands)
+        {
+            var bot = new BotBrain(difficulty, 1);
+            var v = View(hand, GamePhase.InitialDeclarations) with { Settings = settings };
+            Check(bot.Decide(v)?.Kind == ActionKind.FinishInitial, "El bot omite todas las victorias desactivadas.");
+            Check(bot.Decide(v with { Settings = MatchSettings.Default })?.Kind == ActionKind.DeclareInitial,
+                "El bot reconoce la victoria al habilitarla.");
+        }
+        var local = new LocalMatchController(new LocalMatchOptions("Humano", 2, BotDifficulty.Expert, settings), seed: 37);
+        Check(local.View.Settings == settings, "Sesión local usa las opciones elegidas.");
+        Check(local.View.RevealedHands.Length == 0 && local.View.FinalDeck is null, "Opciones no exponen datos ocultos.");
+        local.Close();
+    }
+
     private static SnapshotDto View(int[] hand, GamePhase phase = GamePhase.AwaitingClaims,
         int? offer = null, MeldDto[]? melds = null, int? discard = null, int deck = 20) => new(
         NetworkProtocol.Version, "11111111111111111111111111111111", 10, 10, 1,
@@ -40,6 +72,8 @@ internal static class Program
         {
             var timer = Stopwatch.StartNew();
             UnitChecks();
+            InitialDealDelayChecks();
+            MatchSettingsChecks();
             NormalTurnScenarios();
             int seedCount = args.Contains("--quick") ? 1 : 12;
             foreach (BotDifficulty difficulty in Enum.GetValues<BotDifficulty>())
@@ -129,6 +163,13 @@ internal static class Program
                 action = brain.Decide(View(cards, GamePhase.InitialDeclarations))!;
                 Check(action.Kind == ActionKind.DeclareInitial && action.InitialKind == kind, "Victoria inicial " + kind);
             }
+            foreach (int[] project in new[] {
+                new[] { 1, 14, 29, 44, 7, 22, 37, 51, 10 },
+                new[] { 1, 2, 9, 16, 20, 24, 30, 34, 38 },
+                new[] { 1, 3, 9, 15, 19, 23, 30, 34, 38 },
+                new[] { 40, 51, 36, 34, 50, 26, 8, 11, 3 } })
+                Check(brain.Decide(View(project, GamePhase.InitialDeclarations))!.Kind == ActionKind.FinishInitial,
+                    "El bot continua sin declarar Peladilla con parejas o proyectos, incluida la mano de la captura.");
             SnapshotDto initialOffer = View(new[] { 0, 1, 2, 8, 19, 25, 30, 36, 47 }, offer: 3);
             action = brain.Decide(initialOffer, new(true, false))!;
             Check(action.InitialKind == InitialVictoryKind.LowStraight, "Primera oferta permite victoria inicial con cuatro cartas.");
@@ -288,6 +329,10 @@ internal static class Program
                 Results[view.Result] = Results.GetValueOrDefault(view.Result) + 1;
                 Check(match.BotRejectedActions == 0, "Bot rechazado: " + match.LastBotError);
                 Check(view.Result != MatchResult.None, "Resultado al finalizar.");
+                Check(view.RevealedHands.Length == view.Players.Length && StateProjection.IsValidPublic(StateProjection.Public(view)),
+                    "Todo final, incluido empate, autoriza las manos completas y una réplica coherente.");
+                Check(view.RevealedHands.Single(h => h.PlayerId == view.RecipientId).Cards.SequenceEqual(view.OwnHand),
+                    "La mano final del humano coincide con su vista privada.");
                 Check(!match.Tick(now + 1000), "No hay turnos de bots tras finalizar.");
                 if (view.Result == MatchResult.InitialVictory)
                 {
@@ -297,7 +342,7 @@ internal static class Program
                     InitialResults[proof!.Kind] = InitialResults.GetValueOrDefault(proof.Kind) + 1;
                     if (proof.Kind == InitialVictoryKind.Peladilla)
                     {
-                        // Comprobacion independiente de IsPeladilla: todas las ternas posibles.
+                        // Comprobacion independiente de IsPeladilla: ternas y una carta futura.
                         bool meld = false;
                         for (int a = 0; a < 7; a++) for (int b = a + 1; b < 8; b++) for (int c = b + 1; c < 9; c++)
                         {
@@ -308,7 +353,20 @@ internal static class Program
                             bool consecutive = low[2] - low[0] == 2 || high[2] - high[0] == 2;
                             meld |= set || ids.Select(id => id / 13).Distinct().Count() == 1 && consecutive;
                         }
-                        Check(!meld, "Peladilla ganadora no oculta ninguna tercia o escalera.");
+                        var ownIds = proof.Cards.ToHashSet();
+                        for (int a = 0; a < 8; a++) for (int b = a + 1; b < 9; b++)
+                            for (int future = 0; future < 52; future++)
+                            {
+                                if (ownIds.Contains(future)) continue;
+                                int[] ids = { proof.Cards[a], proof.Cards[b], future };
+                                int[] low = ids.Select(id => id % 13 + 1).Order().ToArray();
+                                int[] high = low.Select(rank => rank == 1 ? 14 : rank).Order().ToArray();
+                                bool set = low.Distinct().Count() == 1;
+                                bool consecutive = low[1] == low[0] + 1 && low[2] == low[1] + 1 ||
+                                    high[1] == high[0] + 1 && high[2] == high[1] + 1;
+                                meld |= set || ids.Select(id => id / 13).Distinct().Count() == 1 && consecutive;
+                            }
+                        Check(!meld, "Peladilla ganadora no oculta juegos ni proyectos que complete una carta futura.");
                     }
                 }
                 if (view.Result == MatchResult.Desmoche)

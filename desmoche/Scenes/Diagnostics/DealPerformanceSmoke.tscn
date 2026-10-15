@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://Scenes/Mesa.tscn" id="1_mesa"]
+[ext_resource type="Script" path="res://Scripts/Diagnostics/DealPerformanceSmoke.cs" id="2_test"]
+
+[node name="Mesa" instance=ExtResource("1_mesa")]
+script = ExtResource("2_test")

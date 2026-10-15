@@ -53,6 +53,9 @@ public partial class Mesa
         Resized += QueueCasinoLayout;
         VisibilityChanged += QueueCasinoLayout;
         _casinoActions.MinimumSizeChanged += QueueCasinoLayout;
+        GetNode<Control>(ContentPath + "TopBar").MinimumSizeChanged += QueueCasinoLayout;
+        GetNode<Control>(ContentPath + "Header").MinimumSizeChanged += QueueCasinoLayout;
+        _rematch.CustomMinimumSize = new Vector2(0, 44);
         _casinoInitialized = true;
         QueueCasinoLayout();
     }
@@ -63,6 +66,8 @@ public partial class Mesa
         Resized -= QueueCasinoLayout;
         VisibilityChanged -= QueueCasinoLayout;
         _casinoActions.MinimumSizeChanged -= QueueCasinoLayout;
+        GetNode<Control>(ContentPath + "TopBar").MinimumSizeChanged -= QueueCasinoLayout;
+        GetNode<Control>(ContentPath + "Header").MinimumSizeChanged -= QueueCasinoLayout;
         _casinoInitialized = false;
     }
 
@@ -77,87 +82,72 @@ public partial class Mesa
     {
         _casinoQueued = false;
         if (!_casinoInitialized || !IsInsideTree()) return;
-        // La imagen nunca se deforma. El pie conserva tamaños legibles al reducir el tablero.
+        // Una sola pantalla: la mesa conserva escala uniforme y los controles
+        // tienen tamaño de interfaz independiente. No queda contenido al bajar.
         float availableWidth = Math.Max(200, Size.X - 16);
-        // Reservar el pie para que nombre y estado tambien se vean en ventanas apaisadas.
+        float headerHeight = LayoutTableChrome(availableWidth);
+        // Los controles pertenecen a sus cartas/juegos. La escala del tablero
+        // es estable al seleccionar: no aparece una fila debajo de la mano.
+        float availableHeight = Math.Max(100, Size.Y - headerHeight - 12);
         CasinoScale = Math.Max(0.1f, Math.Min(availableWidth / CanvasWidth,
-            Math.Max(120, Size.Y - 152) / CanvasHeight));
+            availableHeight / CanvasHeight));
         float width = CanvasWidth * CasinoScale;
         _casinoCanvas.Size = new Vector2(CanvasWidth, CanvasHeight);
         _casinoCanvas.Scale = Vector2.One * CasinoScale;
-        _casinoCanvas.Position = new Vector2((availableWidth - width) / 2, 0);
+        _casinoCanvas.Position = new Vector2((Size.X - width) / 2,
+            headerHeight + (availableHeight - CanvasHeight * CasinoScale) / 2);
         _casinoDeckLayers.Visible = _deck.IsBack;
         foreach (VBoxContainer rival in _rivalGames.GetChildren().OfType<VBoxContainer>())
             LayoutPublicCards(rival.GetNode<Control>("Rows"), RivalWidth, new Vector2(50.3f, 72), 5);
-        LayoutPublicCards(_ownGames, 1120, new Vector2(90, 96), 8);
+        LayoutTableChrome(availableWidth);
 
-        PositionPasaButton();
-
-        int count = _hand.GetChildCount();
+        int count = VisibleHandCards().Length;
         float cardWidth = count == 0 ? 124 : Math.Min(124, (1296f - Math.Max(0, count - 1) * 12) / count);
         foreach (Carta card in _hand.GetChildren().OfType<Carta>())
             card.SetVisualSize(new Vector2(cardWidth, 128 * cardWidth / 124));
         _hand.Size = new Vector2(1296, 132);
-        // Cuando hay muchas cartas, el rótulo pasa al borde superior de la bandeja.
-        _handTitle.Position = count > 7 ? new Vector2(220, -20) : new Vector2(220, 38);
-        _handTitle.Size = new Vector2(250, 40);
+        // El rótulo queda en el espacio lateral de la bandeja, libre incluso
+        // cuando las cartas seleccionadas suben por encima de su fila.
+        _handTitle.Position = new Vector2(64, 20);
+        _handTitle.Scale = Vector2.One / CasinoScale;
+        _handTitle.Size = new Vector2(148 * CasinoScale, 100 * CasinoScale);
+        _handTitle.AddThemeFontSizeOverride("font_size", 12);
+        _handTitle.AutowrapMode = TextServer.AutowrapMode.Off;
+        _handTitle.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        _handTitle.Text = _interactionView?.OwnSpectating == true ? "Observando" : "Tú\n" + (_interactionView?.OwnHand.Length ?? 0) + " cartas";
+        _tableHandPortrait.Position = new Vector2(130, 676); _tableHandPortrait.Size = new Vector2(54, 54);
+        _tableHandPortrait.TooltipText = _interactionView is { } current ? PlayerName(current, current.RecipientId) : "Tú";
 
-        // Controles fuera de la superficie de juego: no tapan cartas ni pierden funcionalidad.
-        float inverse = 1 / CasinoScale;
-        Control top = GetNode<Control>(ContentPath + "TopBar");
-        Control header = GetNode<Control>(ContentPath + "Header");
-        top.Position = new Vector2(0, 788);
-        top.Scale = Vector2.One * inverse;
-        top.Size = new Vector2(width, 36);
-        _selfPlayer.Position = new Vector2(0, 148);
-        _selfPlayer.Scale = Vector2.One * inverse;
-        _selfPlayer.Size = new Vector2(330, 80);
-        float headerLeft = 130 * CasinoScale + 354;
-        header.Position = new Vector2(headerLeft / CasinoScale, 788);
-        header.Scale = Vector2.One * inverse;
-        header.Size = new Vector2(Math.Max(100, width - headerLeft - (_rematch.Visible ? 290 : 152)), header.GetCombinedMinimumSize().Y);
-        float headerBottom = 788 * CasinoScale + Math.Max(80, header.Size.Y) + 16;
-        float controlsTop = headerBottom;
-        // La oferta nunca cambia de fila. Acciones a su derecha, con texto legible.
         Control center = GetNode<Control>(CenterPath.TrimEnd('/'));
-        center.Position = new Vector2(594, 170);
-        center.Size = new Vector2(810, 184);
-        _contextActions.Position = new Vector2(1592, 282);
-        _contextActions.Scale = Vector2.One * inverse;
-        _contextActions.Size = new Vector2(Math.Max(180, width - 1592 * CasinoScale - 18),
-            _contextActions.GetCombinedMinimumSize().Y);
-        _casinoActions.Position = new Vector2(-130, controlsTop / CasinoScale - 640);
-        _casinoActions.Scale = Vector2.One * inverse;
-        _casinoActions.Size = new Vector2(width, _casinoActions.GetCombinedMinimumSize().Y);
-        float end = controlsTop + _casinoActions.Size.Y + 24;
-        _revealedZone.Position = new Vector2(0, end / CasinoScale);
-        _revealedZone.Scale = Vector2.One * inverse;
-        _revealedZone.Size = new Vector2(width, _revealedZone.GetCombinedMinimumSize().Y);
-        if (_revealedZone.Visible) end += _revealedZone.Size.Y + 24;
-        _casinoPadding.CustomMinimumSize = new Vector2(0, end);
+        center.Position = new Vector2(594, 142);
+        center.Size = new Vector2(810, 160);
+        foreach (Carta pile in new[] { _deck, _discard, _offered, _stagedCard }) pile.SetVisualSize(new Vector2(78, 97));
+        foreach (Carta back in _casinoDeckLayers.GetChildren().OfType<Carta>()) back.SetVisualSize(new Vector2(78, 97));
+        foreach (string zone in new[] { "Mazo", "Pozo", "Oferta", "Pago" })
+        {
+            Label caption = GetNode<Label>(CenterPath + zone + "/Content/TitleLabel");
+            caption.AddThemeFontSizeOverride("font_size", 22);
+            GetNode<Label>(CenterPath + zone + "/Content/CountLabel").AddThemeFontSizeOverride("font_size", 16);
+        }
+        Control own = GetNode<Control>(ContentPath + "Table/Padding/Surface/MyGame");
+        float rowHeight = Math.Max(96, 44 / CasinoScale);
+        own.Position = new Vector2(448, 616 - rowHeight - 18 / CasinoScale - 112);
+        Label ownTitle = own.GetNode<Label>("TitleLabel");
+        ownTitle.Scale = Vector2.One / CasinoScale; ownTitle.Size = new Vector2(1120 * CasinoScale, 18);
+        ownTitle.AddThemeFontSizeOverride("font_size", 12);
+        own.GetNode<Control>("LineLeft").Hide(); own.GetNode<Control>("LineRight").Hide();
+        _ownGames.Position = new Vector2(0, 18 / CasinoScale);
+        LayoutTableGames();
+        LayoutInTableActions();
+        Callable.From(LayoutInTableActions).CallDeferred();
+        _casinoPadding.CustomMinimumSize = Vector2.Zero;
+        _casinoPadding.Size = Size;
+        _revealedZone.Hide();
+        PositionPasaButton();
+        LayoutFinalHands();
     }
 
-    private void PositionPasaButton()
-    {
-        if (!_pasaButton.Visible || _challengedMeld is null || !IsInstanceValid(_challengedMeld)) return;
-        _pasaButton.Scale = Vector2.One / CasinoScale;
-        _pasaButton.Size = new Vector2(76, 34);
-        Rect2 group = VisibleCardsRect(_challengedMeld);
-        Rect2 board = _casinoCanvas.GetGlobalRect();
-        Vector2 position = new(group.End.X + 8, group.Position.Y + (group.Size.Y - _pasaButton.Size.Y) / 2);
-        var rows = _rivalGames.GetChildren().OfType<VBoxContainer>()
-            .Select(rival => rival.GetNode<Control>("Rows")).Append(_ownGames);
-        Rect2[] otherGroups = rows.SelectMany(row => row.GetChildren().OfType<HFlowContainer>())
-            .Where(groupNode => groupNode != _challengedMeld).Select(VisibleCardsRect).ToArray();
-        bool Occupied(Vector2 candidate) => candidate.X < board.Position.X + 8 ||
-            candidate.X + _pasaButton.Size.X > board.End.X - 8 ||
-            otherGroups.Any(rect => new Rect2(candidate, _pasaButton.Size).Intersects(rect));
-        if (Occupied(position))
-            position = new Vector2(group.Position.X - _pasaButton.Size.X - 8, position.Y);
-        if (Occupied(position))
-            position = new Vector2(Math.Max(board.Position.X + 8, group.End.X - _pasaButton.Size.X), group.End.Y + 6);
-        _pasaButton.Position = _casinoCanvas.GetGlobalTransform().AffineInverse() * position;
-    }
+    private void PositionPasaButton() => LayoutPasaAction();
 
     private static Rect2 VisibleCardsRect(Control group)
     {

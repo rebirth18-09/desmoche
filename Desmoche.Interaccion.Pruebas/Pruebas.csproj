@@ -13,6 +13,9 @@
     <Compile Include="Program.cs" />
     <Compile Include="ActionInteractionTests.cs" />
     <Compile Include="IncrementalDraftTests.cs" />
+    <Compile Include="PublishedTransferTests.cs" />
+    <Compile Include="InitialDealTests.cs" />
+    <Compile Include="HandSelectionHintTests.cs" />
     <Compile Include="$(GameSourceRoot)\Scripts\Domain\**\*.cs" Link="Domain\%(Filename)%(Extension)" />
     <Compile Include="$(GameSourceRoot)\Scripts\Application\**\*.cs" Link="Application\%(Filename)%(Extension)" />
     <Compile Include="$(GameSourceRoot)\Scripts\Networking\Core\**\*.cs" Link="Networking\%(Filename)%(Extension)" />

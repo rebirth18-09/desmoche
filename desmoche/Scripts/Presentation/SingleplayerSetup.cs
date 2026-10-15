@@ -1,5 +1,6 @@
 using System;
 using Desmoche.Singleplayer.Core;
+using Desmoche.Domain;
 using Godot;
 
 namespace Desmoche.Presentation;
@@ -17,6 +18,10 @@ public partial class SingleplayerSetup : Control
     private Button _start = null!;
     private Button _back = null!;
     private bool _ready;
+    private MatchSettings _settings = MatchSettings.Default;
+    private MatchSettingsPanel _settingsPanel = null!;
+    private Button _settingsButton = null!;
+    private readonly Label _settingsSummary = new();
 
     public event Action<LocalMatchOptions>? StartRequested;
     public event Action? BackRequested;
@@ -35,6 +40,10 @@ public partial class SingleplayerSetup : Control
         // Los selectores visibles crean 1–3 bots y los cuatro niveles una sola vez.
         // Sus IDs conservan el contrato de LocalMatchOptions: bots 1–3, niveles 0–3.
 
+        _settingsButton = MatchSettingsPanel.AddAccess(GetNode<VBoxContainer>(ContentPath.TrimEnd('/')), _settingsSummary, 3);
+        _settingsPanel = new MatchSettingsPanel(); AddChild(_settingsPanel);
+        _settingsSummary.Text = MatchSettingsPanel.Summary(_settings);
+        _settingsButton.Pressed += OpenSettings;
         _start.Pressed += RequestStart;
         _back.Pressed += RequestBack;
         _name.TextChanged += OnNameChanged;
@@ -78,6 +87,7 @@ public partial class SingleplayerSetup : Control
     public override void _ExitTree()
     {
         if (!_ready) return;
+        _settingsButton.Pressed -= OpenSettings;
         _start.Pressed -= RequestStart;
         _back.Pressed -= RequestBack;
         _name.TextChanged -= OnNameChanged;
@@ -87,8 +97,12 @@ public partial class SingleplayerSetup : Control
         _ready = false;
     }
 
+    private void OpenSettings() => _settingsPanel.Open(_settings, true, _settingsButton, settings =>
+    { _settings = settings; _settingsSummary.Text = MatchSettingsPanel.Summary(settings); });
+
     private void RequestStart()
     {
+        if (_settingsPanel.Visible) return;
         string name = _name.Text.Trim();
         if (name.Length == 0)
         {
@@ -99,7 +113,7 @@ public partial class SingleplayerSetup : Control
 
         _message.Hide();
         StartRequested?.Invoke(new LocalMatchOptions(name, _botCount.GetSelectedId(),
-            (BotDifficulty)_difficulty.GetSelectedId()));
+            (BotDifficulty)_difficulty.GetSelectedId(), _settings));
     }
 
     private void RequestBack() => BackRequested?.Invoke();

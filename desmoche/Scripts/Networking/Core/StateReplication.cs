@@ -12,10 +12,12 @@ public sealed record PublicSnapshotDto(int Version, string Session, long Revisio
     int? PaymentPlayerId, int? WinnerPlayerId, PublicPlayerDto[] Players,
     MeldDto[] Melds, int DeckCount, int DiscardCount, int? DiscardTop,
     int? OfferedCard, RevealedHandDto[] RevealedHands, int ExchangeCount = 0,
-    OrderChallengeDto? OrderChallenge = null, bool OpeningOffer = false, InitialVictoryDto? InitialVictory = null);
+    OrderChallengeDto? OrderChallenge = null, bool OpeningOffer = false, InitialVictoryDto? InitialVictory = null,
+    OfferTimingDto? OfferTiming = null, DiscardTimingDto? DiscardTiming = null, RematchDto? Rematch = null,
+    bool MustDrawDeck = false, int[]? FinalDeck = null, MatchSettings? Settings = null);
 
 public sealed record PrivateSnapshotDto(int Version, string Session, long Revision,
-    int RecipientId, int[] OwnHand, bool OwnResponseSubmitted);
+    int RecipientId, int[] OwnHand, bool OwnResponseSubmitted, bool OwnSpectating = false);
 
 public static class StateProjection
 {
@@ -27,19 +29,21 @@ public static class StateProjection
             source.PaymentPlayerId, source.WinnerPlayerId, source.Players.ToArray(),
             CopyMelds(source.Melds), source.DeckCount, source.DiscardCount,
             source.DiscardTop, source.OfferedCard, CopyRevealed(source.RevealedHands),
-            source.ExchangeCount, source.OrderChallenge, source.OpeningOffer, CopyInitial(source.InitialVictory));
+            source.ExchangeCount, source.OrderChallenge, source.OpeningOffer, CopyInitial(source.InitialVictory),
+            CopyOfferTiming(source.OfferTiming), source.DiscardTiming, CopyRematch(source.Rematch), source.MustDrawDeck,
+            source.FinalDeck?.ToArray(), source.Settings);
     }
 
     public static PrivateSnapshotDto Private(SnapshotDto source)
     {
         ArgumentNullException.ThrowIfNull(source);
         return new PrivateSnapshotDto(source.Version, source.Session, source.Revision,
-            source.RecipientId, source.OwnHand.ToArray(), source.OwnResponseSubmitted);
+            source.RecipientId, source.OwnHand.ToArray(), source.OwnResponseSubmitted, source.OwnSpectating);
     }
 
     public static bool IsValidPublic(PublicSnapshotDto? value)
     {
-        if (value is null || value.Version != NetworkProtocol.Version ||
+        if (value is null || value.Settings is { } settings && !settings.IsValid() || value.Version != NetworkProtocol.Version ||
             !ValidSession(value.Session) || value.Revision <= 0 || value.Window <= 0 ||
             !Enum.IsDefined(value.Phase) || !Enum.IsDefined(value.Result) ||
             value.Players is null || value.Players.Length is < 1 or > 4 ||
@@ -59,18 +63,25 @@ public static class StateProjection
         if (!KnownPlayer(value.CurrentPlayerId, playerIds) ||
             !KnownPlayer(value.PaymentPlayerId, playerIds) ||
             !KnownPlayer(value.WinnerPlayerId, playerIds)) return false;
+        if (!ValidTimers(value, playerIds) || value.MustDrawDeck && value.Phase != GamePhase.AwaitingDraw) return false;
 
         if (value.ExchangeCount is < 0 or > 4 ||
             value.ExchangeCount > 0 && value.Phase != GamePhase.InitialExchange ||
             value.OpeningOffer && value.Phase != GamePhase.AwaitingClaims ||
             (value.Phase == GamePhase.AwaitingOrderChallenge) != (value.OrderChallenge is not null)) return false;
         if (value.OrderChallenge is { } challenge && (!playerIds.Contains(challenge.PlayerId) ||
-            challenge.Id <= 0 || challenge.RemainingMilliseconds is < 0 or > ServerSession.PasaDurationMilliseconds)) return false;
+            challenge.Id <= 0 || (challenge.RemainingMilliseconds < 0 || challenge.RemainingMilliseconds > (value.Settings ?? MatchSettings.Default).PasaSeconds * 1000) ||
+            !Enum.IsDefined(challenge.Reason) ||
+            (challenge.Reason == PasaReason.UnusedOffer ? value.OfferedCard is null || challenge.MeldId is null ||
+                !value.Melds.Any(m => m is not null && m.Id == challenge.MeldId && m.OwnerId == challenge.PlayerId)
+                : challenge.MeldId is not null))) return false;
         bool won = value.Result is MatchResult.Desmoche or MatchResult.InitialVictory;
         if ((value.Phase == GamePhase.Finished) != (value.Result != MatchResult.None) ||
             won != value.WinnerPlayerId.HasValue ||
-            (won ? value.RevealedHands.Length != value.Players.Length :
+            (value.Phase == GamePhase.Finished ? value.RevealedHands.Length != value.Players.Length :
                 value.RevealedHands.Length != 0)) return false;
+        if (value.Phase == GamePhase.Finished ? !ValidCards(value.FinalDeck, 52) || value.FinalDeck!.Length != value.DeckCount
+            : value.FinalDeck is not null) return false;
 
         var visibleCards = new HashSet<int>();
         var meldIds = new HashSet<int>();
@@ -86,6 +97,9 @@ public static class StateProjection
         }
         if (value.DiscardTop is int top && !visibleCards.Add(top)) return false;
         if (value.OfferedCard is int offered && !visibleCards.Add(offered)) return false;
+        if (value.OrderChallenge is { Reason: PasaReason.UnusedOffer } unused &&
+            !RulesValidator.CanExtendMeld(value.Melds.Single(m => m.Id == unused.MeldId).Cards.Select(Card.FromId).ToArray(),
+                Card.FromId(value.OfferedCard!.Value))) return false;
 
         var revealedPlayers = new HashSet<int>();
         foreach (RevealedHandDto hand in value.RevealedHands)
@@ -97,10 +111,12 @@ public static class StateProjection
             foreach (int id in hand.Cards)
                 if (!visibleCards.Add(id)) return false;
         }
+        foreach (int id in value.FinalDeck ?? Array.Empty<int>())
+            if (!visibleCards.Add(id)) return false;
         if ((value.Result == MatchResult.InitialVictory) != (value.InitialVictory is not null)) return false;
         if (value.InitialVictory is { } proof)
         {
-            if (value.Result != MatchResult.InitialVictory || !Enum.IsDefined(proof.Kind) ||
+            if (value.Result != MatchResult.InitialVictory || !Enum.IsDefined(proof.Kind) || !(value.Settings ?? MatchSettings.Default).Allows(proof.Kind) ||
                 !ValidCards(proof.Cards, 9)) return false;
             int expected = proof.Kind is InitialVictoryKind.Color or InitialVictoryKind.Peladilla ? 9 : 4;
             var winnerCards = value.Melds.Where(m => m.OwnerId == value.WinnerPlayerId).SelectMany(m => m.Cards)
@@ -119,7 +135,35 @@ public static class StateProjection
     public static bool IsValidPrivate(PrivateSnapshotDto? value) =>
         value is not null && value.Version == NetworkProtocol.Version &&
         ValidSession(value.Session) && value.Revision > 0 && value.RecipientId > 0 &&
-        ValidCards(value.OwnHand, 52);
+        ValidCards(value.OwnHand, 52) && (!value.OwnSpectating || value.RecipientId == 1 && value.OwnHand.Length == 0);
+
+    private static bool ValidTimers(PublicSnapshotDto value, HashSet<int> players)
+    {
+        MatchSettings settings = value.Settings ?? MatchSettings.Default;
+        if (value.OfferTiming is { } offer)
+        {
+            if (value.Phase != GamePhase.AwaitingClaims || offer.CardId != value.OfferedCard ||
+                (offer.RemainingSelectionMilliseconds < 0 || offer.RemainingSelectionMilliseconds > settings.CardChoiceSeconds * 1000) ||
+                offer.Reservations is null || offer.Reservations.Length > players.Count ||
+                offer.Reservations.Any(r => r is null || !players.Contains(r.PlayerId) ||
+                    (r.RemainingMilliseconds < 0 || r.RemainingMilliseconds > settings.CardPreparationSeconds * 1000)) ||
+                offer.Reservations.Select(r => r.PlayerId).Distinct().Count() != offer.Reservations.Length) return false;
+        }
+        if (value.DiscardTiming is { } discard && (value.Phase != GamePhase.AwaitingDraw ||
+            discard.PlayerId != value.CurrentPlayerId || !players.Contains(discard.PlayerId) ||
+            discard.CardId != value.DiscardTop ||
+            (discard.RemainingMilliseconds < 0 || discard.RemainingMilliseconds > settings.CardChoiceSeconds * 1000))) return false;
+        if (value.Rematch is { } rematch && (value.Phase != GamePhase.Finished ||
+            (rematch.RemainingMilliseconds < 0 || rematch.RemainingMilliseconds > settings.RematchSeconds * 1000) ||
+            rematch.EligiblePlayerIds is null || rematch.ReadyPlayerIds is null ||
+            rematch.EligiblePlayerIds.Length > players.Count || rematch.ReadyPlayerIds.Length > players.Count ||
+            rematch.EligiblePlayerIds.Any(id => !players.Contains(id)) ||
+            rematch.ReadyPlayerIds.Any(id => !rematch.EligiblePlayerIds.Contains(id)) ||
+            rematch.EligiblePlayerIds.Distinct().Count() != rematch.EligiblePlayerIds.Length ||
+            rematch.ReadyPlayerIds.Distinct().Count() != rematch.ReadyPlayerIds.Length ||
+            rematch.Closed && rematch.RemainingMilliseconds != 0)) return false;
+        return true;
+    }
 
     internal static bool ValidSession(string? value) =>
         value is not null && value.Length == 32 && Guid.TryParseExact(value, "N", out _);
@@ -133,6 +177,11 @@ public static class StateProjection
 
     internal static InitialVictoryDto? CopyInitial(InitialVictoryDto? source) =>
         source is null ? null : new(source.Kind, source.Cards.ToArray());
+    internal static OfferTimingDto? CopyOfferTiming(OfferTimingDto? source) =>
+        source is null ? null : source with { Reservations = source.Reservations.ToArray() };
+    internal static RematchDto? CopyRematch(RematchDto? source) =>
+        source is null ? null : source with { EligiblePlayerIds = source.EligiblePlayerIds.ToArray(),
+            ReadyPlayerIds = source.ReadyPlayerIds.ToArray() };
     internal static MeldDto[] CopyMelds(MeldDto[] source) =>
         source.Select(m => new MeldDto(m.Id, m.OwnerId, m.Cards.ToArray())).ToArray();
     internal static RevealedHandDto[] CopyRevealed(RevealedHandDto[] source) =>
@@ -142,7 +191,10 @@ public static class StateProjection
         Players = source.Players.ToArray(),
         Melds = CopyMelds(source.Melds),
         RevealedHands = CopyRevealed(source.RevealedHands),
-        InitialVictory = CopyInitial(source.InitialVictory)
+        InitialVictory = CopyInitial(source.InitialVictory),
+        OfferTiming = CopyOfferTiming(source.OfferTiming),
+        Rematch = CopyRematch(source.Rematch),
+        FinalDeck = source.FinalDeck?.ToArray()
     };
     internal static PrivateSnapshotDto Copy(PrivateSnapshotDto source) =>
         source with { OwnHand = source.OwnHand.ToArray() };
@@ -151,7 +203,9 @@ public static class StateProjection
             p.Phase, p.Result, p.CurrentPlayerId, p.PaymentPlayerId, p.WinnerPlayerId,
             p.Players.ToArray(), own.OwnHand.ToArray(), CopyMelds(p.Melds),
             p.DeckCount, p.DiscardCount, p.DiscardTop, p.OfferedCard,
-            CopyRevealed(p.RevealedHands), own.OwnResponseSubmitted, p.ExchangeCount, p.OrderChallenge, p.OpeningOffer, CopyInitial(p.InitialVictory));
+            CopyRevealed(p.RevealedHands), own.OwnResponseSubmitted, p.ExchangeCount, p.OrderChallenge, p.OpeningOffer,
+            CopyInitial(p.InitialVictory), CopyOfferTiming(p.OfferTiming), p.DiscardTiming, CopyRematch(p.Rematch), own.OwnSpectating,
+            p.MustDrawDeck, p.FinalDeck?.ToArray(), p.Settings);
 }
 
 // No supone orden entre RPC y sincronizacion. Conserva solo la ultima parte de cada canal.
@@ -191,7 +245,7 @@ public sealed class ClientStateAssembler
     {
         committed = null;
         if (_session is null || !StateProjection.IsValidPublic(value) ||
-            value.Session != _session || !value.Players.Any(p => p.Id == _recipient) ||
+            value.Session != _session || _recipient != 1 && !value.Players.Any(p => p.Id == _recipient) ||
             value.Revision <= (_view?.Revision ?? 0) ||
             value.Revision <= (_public?.Revision ?? 0)) return false;
         _public = StateProjection.Copy(value);
@@ -214,13 +268,15 @@ public sealed class ClientStateAssembler
         committed = null;
         if (_public is null || _private is null || _public.Revision != _private.Revision)
             return false;
-        PublicPlayerDto player = _public.Players.Single(p => p.Id == _recipient);
-        if (player.CardCount != _private.OwnHand.Length) return false;
+        PublicPlayerDto? player = _public.Players.FirstOrDefault(p => p.Id == _recipient);
+        if (_private.OwnSpectating ? player is not null || _recipient != 1 :
+            player is null || player.CardCount != _private.OwnHand.Length) return false;
         var occupied = _public.Melds.SelectMany(m => m.Cards).ToHashSet();
         if (_public.DiscardTop is int top) occupied.Add(top);
         if (_public.OfferedCard is int offered) occupied.Add(offered);
+        foreach (int id in _public.FinalDeck ?? Array.Empty<int>()) occupied.Add(id);
         if (_private.OwnHand.Any(occupied.Contains)) return false;
-        if (_public.RevealedHands.Length != 0)
+        if (_public.RevealedHands.Length != 0 && !_private.OwnSpectating)
         {
             RevealedHandDto own = _public.RevealedHands.Single(h => h.PlayerId == _recipient);
             if (!own.Cards.SequenceEqual(_private.OwnHand)) return false;

@@ -27,9 +27,9 @@ public partial class StartupMenu : Control
         _settings = GetNode<Button>("SettingsButton");
         _help = GetNode<Control>("HelpOverlay");
         _settingsPanel = GetNode<Control>("SettingsOverlay");
-        _closeHelp = GetNode<Button>("HelpOverlay/Center/Panel/Padding/Content/CloseButton");
-        _closeSettings = GetNode<Button>("SettingsOverlay/Center/Panel/Padding/Content/CloseButton");
-        _fullscreen = GetNode<CheckButton>("SettingsOverlay/Center/Panel/Padding/Content/FullscreenButton");
+        _closeHelp = GetNode<Button>("HelpOverlay/Scroll/Center/Panel/Padding/Content/CloseButton");
+        _closeSettings = GetNode<Button>("SettingsOverlay/Scroll/Center/Panel/Padding/Content/CloseButton");
+        _fullscreen = GetNode<CheckButton>("SettingsOverlay/Scroll/Center/Panel/Padding/Content/FullscreenButton");
         _content = GetNode<VBoxContainer>("Scroll/Center/Content");
         _multiplayer.Pressed += RequestMultiplayer;
         _singleplayer.Pressed += RequestSingleplayer;
@@ -73,7 +73,14 @@ public partial class StartupMenu : Control
         GetViewport().SetInputAsHandled();
     }
 
-    private void OpenHelp() { _help.Show(); _closeHelp.GrabFocus(); }
+    private void OpenHelp()
+    {
+        _help.Show();
+        ScrollContainer scroll = _help.GetNode<ScrollContainer>("Scroll");
+        scroll.FocusMode = FocusModeEnum.All;
+        scroll.GrabFocus();
+        scroll.ScrollVertical = 0;
+    }
     private void CloseHelp() { _help.Hide(); _rules.GrabFocus(); }
     private void OpenSettings()
     {
@@ -100,7 +107,7 @@ public partial class StartupMenu : Control
         GetNode<Control>(ContentPath + "Buttons/ButtonSpace").CustomMinimumSize = new Vector2(0, 14 * ratio);
         GetNode<Control>(ContentPath + "Buttons/FooterSpace").CustomMinimumSize = new Vector2(0, 30 * ratio);
         foreach (string overlay in new[] { "HelpOverlay", "SettingsOverlay" })
-            GetNode<Control>(overlay + "/Center/Panel").CustomMinimumSize = new Vector2(Math.Clamp(Size.X - 64, 280, 540), 0);
+            GetNode<Control>(overlay + "/Scroll/Center/Panel").CustomMinimumSize = new Vector2(Math.Clamp(Size.X - 64, 280, 540), 0);
     }
 
     private void RequestMultiplayer() => EmitSignal(SignalName.MultiplayerRequested);

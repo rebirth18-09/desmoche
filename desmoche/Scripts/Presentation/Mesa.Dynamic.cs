@@ -14,7 +14,7 @@ public partial class Mesa
     public const string ContextActionsPath = ContentPath + "ContextActions/";
     public int? StagedCardId => _stagedCardId;
     private int? _stagedCardId;
-    private VBoxContainer _contextActions = null!;
+    private Control _contextActions = null!;
     private Carta _stagedCard = null!;
     private Label _slotTitle = null!, _slotHint = null!;
     public const string PasaButtonPath = ContentPath + "PasaButton";
@@ -36,7 +36,7 @@ public partial class Mesa
         GetNode<Control>(InteractionPath + "LocalActions").Hide();
         GetNode<Control>(InteractionPath + "NetworkActions").Hide();
         GetNode<Label>(InteractionPath + "HintLabel").Text =
-            "Arrastra para ordenar. Suelta en Mi juego para crear; sobre un juego propio para ampliar. Click: seleccionar varias.";
+            "Arrastra para ordenar o ampliar. Click o Enter en una carta publicada: trasmochar a un juego nuevo, si el origen sigue valido.";
         _meldEmpty.Text = "Arrastra aqui para preparar un juego nuevo.";
         GetNode<Label>(ContentPath + "TopBar/TitleLabel").Text = "";
 
@@ -60,11 +60,12 @@ public partial class Mesa
         _paymentZone.DropAllowed = (_, data) => CanDropPayment(data);
         _paymentZone.DropReceived = (_, data) => DropPayment(data);
 
-        _contextActions = new VBoxContainer { Name = "ContextActions", MouseFilter = MouseFilterEnum.Pass };
-        _contextActions.AddThemeConstantOverride("separation", 6);
+        _contextActions = new Control { Name = "ContextActions", MouseFilter = MouseFilterEnum.Pass };
         GetNode<Control>(ContentPath.TrimEnd('/')).AddChild(_contextActions);
         foreach (var entry in new[]
         {
+            ("ChooseOfferButton", "Quiero esta carta", ActionKind.ChooseOffer),
+            ("ChooseDiscardButton", "Quiero el pozo", ActionKind.ChooseDiscard),
             ("ClaimButton", "Tomar oferta", ActionKind.Claim),
             ("PassButton", "Rechazar oferta", ActionKind.Pass),
             ("DrawDeckButton", "Mostrar del mazo", ActionKind.DrawDeck),
@@ -84,7 +85,7 @@ public partial class Mesa
         _contextActions.RemoveChild(_pasaButton);
         GetNode<Control>(ContentPath.TrimEnd('/')).AddChild(_pasaButton);
         _pasaButton.Text = "Pasa";
-        _pasaButton.TooltipText = "Tienes tres segundos para señalar este juego.";
+        _pasaButton.TooltipText = "Señala la infracción antes de que termine el tiempo indicado.";
         _pasaButton.ZIndex = 5;
         _contextWin = new CheckButton { Name = "DeclareWin", Text = "Ganar con esta carta" };
         _contextWin.AddThemeFontSizeOverride("font_size", 13);
@@ -106,7 +107,7 @@ public partial class Mesa
 
     private Button ContextButton(string name, string caption)
     {
-        var button = new Button { Name = name, Text = caption, CustomMinimumSize = new Vector2(0, 32) };
+        var button = new Button { Name = name, Text = caption, CustomMinimumSize = new Vector2(0, 44) };
         button.AddThemeFontSizeOverride("font_size", 14);
         _contextActions.AddChild(button);
         return button;
@@ -126,6 +127,42 @@ public partial class Mesa
         cards.SetDragForwarding(Callable.From<Vector2, Variant>(_ => default),
             Callable.From<Vector2, Variant, bool>((_, data) => CanDropDraft(data)),
             Callable.From<Vector2, Variant>((_, data) => DropDraft(data, targetMeldId: meldId)));
+        foreach (Carta card in cards.GetChildren().OfType<Carta>())
+        {
+            int id = card.FaceCardId!.Value;
+            card.SelectionRequested += PreparePublishedCard;
+            card.DragDataRequested = () => CanEdit && _interactionView is { } view && _handState.CanStagePublishedCard(id)
+                ? CardDragData.Create(view, id, CardDragOrigin.Published, meldId) : default;
+            card.DropAllowed = (_, data) => CanDropDraft(data);
+            card.DropReceived = (_, data) => DropDraft(data, targetMeldId: meldId);
+        }
+        RefreshPublishedCards();
+    }
+
+    private void PreparePublishedCard(int id)
+    {
+        if (!CanEdit || !_handState.CanStagePublishedCard(id) || !_handState.StageCards(id)) return;
+        Message("Trasmoche preparado. Completa y ordena el destino; confirma los juegos o toma la oferta cuando este listo.");
+        RenderDrafts(); RefreshSelection();
+    }
+
+    private void RefreshPublishedCards()
+    {
+        if (_interactionView is not { } view) return;
+        foreach (MeldDto meld in view.Melds.Where(m => m.OwnerId == view.RecipientId))
+        {
+            HFlowContainer? row = _ownGames.GetNodeOrNull<HFlowContainer>("Juego" + meld.Id);
+            if (row is null) continue;
+            foreach (Carta card in row.GetChildren().OfType<Carta>())
+            {
+                int id = card.FaceCardId!.Value;
+                bool removable = _handState.CanStagePublishedCard(id);
+                card.SetInteraction(CanEdit && removable, Assigned(id));
+                card.TooltipText = removable
+                    ? "Click o Enter: trasmochar a juego nuevo. Arrastra sobre un borrador o juego propio para elegir destino."
+                    : "Esta carta no puede retirarse ahora sin romper su juego, o ya esta preparada en un borrador.";
+            }
+        }
     }
 
     private void ConfirmStagedCard()
@@ -133,7 +170,8 @@ public partial class Mesa
         if (!CanSend || SlotAction is not ActionKind kind || _stagedCardId is not int id ||
             _interactionView is not { } view || !view.OwnHand.Contains(id) || Assigned(id)) return;
         SendRequest(new VisualActionRequest(kind, id));
-        if (_pendingRequest != 0) _stagedCardId = null;
+        // La carta permanece en la casilla durante la solicitud. Solo la vista
+        // confirmada la retira de la mano real; un rechazo permite restaurarla.
         RefreshDynamicInteraction();
     }
 
@@ -171,15 +209,26 @@ public partial class Mesa
         _slotHint.Text = slot == ActionKind.ExchangeCard ? "A tu derecha" : "Arrastra una carta";
         if (_stagedCardId is int staged) _stagedCard.ShowFace(staged);
         else _stagedCard.ShowEmpty("SUELTA AQUI");
+        foreach (Carta card in _hand.GetChildren().OfType<Carta>())
+        {
+            // Ocultar conserva identidad y orden local, pero HFlow libera el
+            // espacio. La misma casilla se utiliza en pago y cambio inicial.
+            card.Visible = card.FaceCardId != _stagedCardId && (card.FaceCardId is not int handId || !Assigned(handId));
+            card.Interactive = CanEdit && card.Visible;
+        }
         _confirmCard.Visible = _cancelCard.Visible = slot is not null && _stagedCardId is not null;
         _confirmCard.Disabled = !CanSend;
         _cancelCard.Disabled = !CanEdit;
         foreach (var entry in _contextButtons)
         {
             bool allowed = InteractionActions.CanRequest(_interactionView, entry.Key);
+            if (entry.Key is ActionKind.ChooseOffer or ActionKind.Pass)
+                allowed &= _interactionView?.OfferedCard is not null;
             if (entry.Key == ActionKind.Publish)
                 allowed &= _handState.Groups.Count > 0 && !_handState.Groups.Any(group =>
                     group.Cards.Count < 3 || group.Cards.Contains(_handState.ExternalCardId ?? -1));
+            if (entry.Key is ActionKind.Claim or ActionKind.DrawDiscard)
+                allowed &= _handState.ExternalCardId is int external && _handState.Groups.Any(group => group.Cards.Contains(external));
             entry.Value.Visible = allowed;
             entry.Value.Disabled = !CanSend;
         }

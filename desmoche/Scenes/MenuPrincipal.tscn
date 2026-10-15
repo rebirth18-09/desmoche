@@ -148,19 +148,26 @@ grow_vertical = 2
 visible = false
 color = Color(0, 0.02, 0.012, 0.8)
 
-[node name="Center" type="CenterContainer" parent="HelpOverlay"]
+[node name="Scroll" type="ScrollContainer" parent="HelpOverlay"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+horizontal_scroll_mode = 0
+follow_focus = true
 
-[node name="Panel" type="PanelContainer" parent="HelpOverlay/Center"]
+[node name="Center" type="CenterContainer" parent="HelpOverlay/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Panel" type="PanelContainer" parent="HelpOverlay/Scroll/Center"]
 custom_minimum_size = Vector2(540, 0)
 layout_mode = 2
 
-[node name="Padding" type="MarginContainer" parent="HelpOverlay/Center/Panel"]
+[node name="Padding" type="MarginContainer" parent="HelpOverlay/Scroll/Center/Panel"]
 layout_mode = 2
 theme_override_constants/margin_left = 28
 theme_override_constants/margin_right = 28
@@ -168,11 +175,11 @@ theme_override_constants/margin_top = 28
 theme_override_constants/margin_bottom = 28
 
 
-[node name="Content" type="VBoxContainer" parent="HelpOverlay/Center/Panel/Padding"]
+[node name="Content" type="VBoxContainer" parent="HelpOverlay/Scroll/Center/Panel/Padding"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="TitleLabel" type="Label" parent="HelpOverlay/Center/Panel/Padding/Content"]
+[node name="TitleLabel" type="Label" parent="HelpOverlay/Scroll/Center/Panel/Padding/Content"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 36
@@ -182,15 +189,15 @@ horizontal_alignment = 1
 autowrap_mode = 3
 
 
-[node name="RulesText" type="Label" parent="HelpOverlay/Center/Panel/Padding/Content"]
+[node name="RulesText" type="Label" parent="HelpOverlay/Scroll/Center/Panel/Padding/Content"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 18
-text = "• Se juega con 52 cartas, sin comodines, entre 2 y 4 participantes.\n\n• Empiezas con 9 cartas. Elige una para entregar a tu derecha; recibirás otra de tu izquierda.\n\n• Forma tercias, cuartas o escaleras del mismo palo.\n\n• Una carta reclamada debe usarse en un juego válido; después paga una carta, salvo victoria.\n\n• Ganas automáticamente con exactamente 10 cartas combinadas y ninguna carta suelta.\n\n• En tercias y cuartas alterna rojo y negro. Si no lo haces, tus rivales tienen 2 segundos para decir Pasa.\n\n• Al inicio puedes declarar A-2-3-4 o J-Q-K-A ordenadas del mismo palo. Tras el cambio también puedes declarar Color, con la mano del mismo color ordenada, o Peladilla, si no puedes formar ningún juego."
+text = "• Se juega con 52 cartas, sin comodines, entre 2 y 4 participantes.\n\n• Empiezas con 9 cartas. Elige una para entregar a tu derecha; recibirás otra de tu izquierda.\n\n• Forma tercias, cuartas o escaleras del mismo palo.\n\n• Una carta reclamada debe usarse en un juego válido; después paga una carta, salvo victoria.\n\n• Si una oferta del mazo o de un pago entra en un juego tuyo publicado, debes jugarla allí o en otro juego válido. Si nadie usa esa oferta y la dejas pasar, tus rivales tienen el plazo de la sala (3 segundos por defecto) para decir Pasa y eliminarte. Si no la denuncian, sigues jugando y la carta pasa al pozo.\n\n• Ganas automáticamente con exactamente 10 cartas combinadas y ninguna carta suelta.\n\n• En tercias y cuartas alterna rojo y negro. Si no lo haces, tus rivales tienen el plazo de la sala (3 segundos por defecto) para decir Pasa.\n\n• El creador puede ajustar los tiempos y activar o desactivar cada victoria inicial desde Ajustes, antes de iniciar.\n\n• Al inicio, si están activadas, puedes declarar A-2-3-4 o J-Q-K-A ordenadas del mismo palo. Tras el cambio también puedes declarar una cuarta, Color, con la mano del mismo color ordenada, o Peladilla, si no hay juegos ni posibilidad de formarlos añadiendo una carta. Declarar Peladilla con una pareja, proyecto o juego oculto elimina al jugador."
 autowrap_mode = 3
 
 
-[node name="CloseButton" type="Button" parent="HelpOverlay/Center/Panel/Padding/Content"]
+[node name="CloseButton" type="Button" parent="HelpOverlay/Scroll/Center/Panel/Padding/Content"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_type_variation = &"PrimaryButton"
@@ -207,19 +214,26 @@ grow_vertical = 2
 visible = false
 color = Color(0, 0.02, 0.012, 0.8)
 
-[node name="Center" type="CenterContainer" parent="SettingsOverlay"]
+[node name="Scroll" type="ScrollContainer" parent="SettingsOverlay"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+horizontal_scroll_mode = 0
+follow_focus = true
 
-[node name="Panel" type="PanelContainer" parent="SettingsOverlay/Center"]
+[node name="Center" type="CenterContainer" parent="SettingsOverlay/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Panel" type="PanelContainer" parent="SettingsOverlay/Scroll/Center"]
 custom_minimum_size = Vector2(540, 0)
 layout_mode = 2
 
-[node name="Padding" type="MarginContainer" parent="SettingsOverlay/Center/Panel"]
+[node name="Padding" type="MarginContainer" parent="SettingsOverlay/Scroll/Center/Panel"]
 layout_mode = 2
 theme_override_constants/margin_left = 28
 theme_override_constants/margin_right = 28
@@ -227,11 +241,11 @@ theme_override_constants/margin_top = 28
 theme_override_constants/margin_bottom = 28
 
 
-[node name="Content" type="VBoxContainer" parent="SettingsOverlay/Center/Panel/Padding"]
+[node name="Content" type="VBoxContainer" parent="SettingsOverlay/Scroll/Center/Panel/Padding"]
 layout_mode = 2
 theme_override_constants/separation = 16
 
-[node name="TitleLabel" type="Label" parent="SettingsOverlay/Center/Panel/Padding/Content"]
+[node name="TitleLabel" type="Label" parent="SettingsOverlay/Scroll/Center/Panel/Padding/Content"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 36
@@ -241,11 +255,11 @@ horizontal_alignment = 1
 autowrap_mode = 3
 
 
-[node name="FullscreenButton" type="CheckButton" parent="SettingsOverlay/Center/Panel/Padding/Content"]
+[node name="FullscreenButton" type="CheckButton" parent="SettingsOverlay/Scroll/Center/Panel/Padding/Content"]
 layout_mode = 2
 text = "Pantalla completa"
 
-[node name="SettingsHint" type="Label" parent="SettingsOverlay/Center/Panel/Padding/Content"]
+[node name="SettingsHint" type="Label" parent="SettingsOverlay/Scroll/Center/Panel/Padding/Content"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_font_sizes/font_size = 18
@@ -254,7 +268,7 @@ horizontal_alignment = 1
 autowrap_mode = 3
 
 
-[node name="CloseButton" type="Button" parent="SettingsOverlay/Center/Panel/Padding/Content"]
+[node name="CloseButton" type="Button" parent="SettingsOverlay/Scroll/Center/Panel/Padding/Content"]
 custom_minimum_size = Vector2(0, 48)
 layout_mode = 2
 theme_type_variation = &"PrimaryButton"

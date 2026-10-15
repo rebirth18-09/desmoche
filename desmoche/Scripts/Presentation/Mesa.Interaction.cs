@@ -16,13 +16,14 @@ public partial class Mesa
     private readonly List<Button> _localButtons = new();
     private SnapshotDto? _interactionView;
     private CardDropZone _draftZone = null!, _paymentZone = null!;
-    private VBoxContainer _draftRows = null!;
+    private Control _draftRows = null!;
     private Label _selectionLabel = null!, _draftEmpty = null!, _interactionMessage = null!;
     private OptionButton _targetGame = null!;
     private CheckButton _externalSelect = null!, _declareWin = null!;
     private long _pendingRequest;
     private ulong _pendingUntil;
     private string _pendingSession = "";
+    private ActionKind _pendingKind;
 
     // Diagnostico de presentacion; siempre devuelve copias, nunca el estado del motor.
     public int[] LocalHandOrder => _handState.Order.ToArray();
@@ -36,7 +37,7 @@ public partial class Mesa
         _externalSelect = GetNode<CheckButton>(InteractionPath + "LocalActions/ExternalSelect");
         _declareWin = GetNode<CheckButton>(InteractionPath + "NetworkActions/DeclareWin");
         _draftZone = GetNode<CardDropZone>(InteractionPath + "DraftZone");
-        _draftRows = GetNode<VBoxContainer>(InteractionPath + "DraftZone/Content/Rows");
+        _draftRows = GetNode<Control>(InteractionPath + "DraftZone/Content/Rows");
         _draftEmpty = GetNode<Label>(InteractionPath + "DraftZone/Content/EmptyLabel");
         InitializeDynamicInteraction();
         AddLocal("PrepareButton", PrepareSelected);
@@ -61,7 +62,7 @@ public partial class Mesa
         }
         _hand.SetDragForwarding(Callable.From<Vector2, Variant>(_ => default),
             Callable.From<Vector2, Variant, bool>((_, data) => CanDropHand(data)),
-            Callable.From<Vector2, Variant>((_, data) => DropHand(data, _handState.Order.Count)));
+            Callable.From<Vector2, Variant>((position, data) => DropHand(data, HandDropIndex(position))));
         _draftZone.DropAllowed = (_, data) => CanDropDraft(data);
         _draftZone.DropReceived = (_, data) => DropDraft(data);
         _ownGames.MouseFilter = MouseFilterEnum.Pass;
@@ -77,10 +78,10 @@ public partial class Mesa
         _localButtons.Add(button);
     }
 
-    private bool CanEdit => _pendingRequest == 0 && _interactionView is { } view &&
+    private bool CanEdit => !IsDealing && _pendingRequest == 0 && _interactionView is { } view &&
         view.Phase is not (GamePhase.Preparing or GamePhase.Finished) &&
         view.Players.Any(p => p.Id == view.RecipientId && p.Connected && !p.Eliminated);
-    private bool CanSend => _pendingRequest == 0 && _session is { IsActive: true } &&
+    private bool CanSend => !IsDealing && _pendingRequest == 0 && _session is { IsActive: true } &&
         _session.View is { } networkView &&
         _interactionView is { } shown && networkView.Session == shown.Session &&
         networkView.Revision == shown.Revision && networkView.RecipientId == shown.RecipientId;
@@ -90,6 +91,7 @@ public partial class Mesa
         SnapshotDto? previous = _interactionView;
         // DisplaySnapshot reconstruye los nodos, incluso al cambiar el mensaje de conexion.
         // Cancelar primero evita conservar una referencia al origen que se va a liberar.
+        AbortHandDrag();
         if (GetViewport().GuiIsDragging()) GetViewport().GuiCancelDrag();
         bool contextChanged = view is null || previous is null || previous.Session != view.Session ||
             previous.Window != view.Window || previous.Phase != view.Phase ||
@@ -108,6 +110,8 @@ public partial class Mesa
         // invalidan nuestra carta pendiente. RefreshDynamicInteraction comprueba
         // que siga en la mano, sin asignar y permitida por la fase actual.
         if (contextChanged) _stagedCardId = null;
+        if (contextChanged)
+        { _tableEditingMeld = null; _tableGameOffset = 0; _tableMenuOpen = false; if (_tableEditingReady) _tableInfo.Hide(); }
         _handState.Synchronize(view);
         _interactionView = view;
         PopulateTargets();
@@ -127,12 +131,15 @@ public partial class Mesa
 
     private void RenderHand()
     {
+        AbortHandDrag();
         Clear(_hand);
         foreach (int id in _handState.Order)
         {
             Carta card = CreateInteractiveCard(_hand, id, "Carta" + id);
             card.SelectionRequested += ToggleHand;
             card.DragDataRequested = () => BeginHandDrag(id);
+            card.DragPreviewCreated = _ => BeginHandDragVisual(card);
+            card.DragCompleted = CompleteHandDragVisual;
             card.DropAllowed = (_, data) => CanDropHand(data);
             card.DropReceived = (position, data) =>
             {
@@ -185,7 +192,15 @@ public partial class Mesa
             { RenderDrafts(); RefreshSelection(); }
             return;
         }
-        if (_handState.Move(drag.CardId, beforeIndex)) RenderHand();
+        if (_draggedHandCard?.FaceCardId == drag.CardId)
+        {
+            UpdateHandDragPreview(_hand.GetLocalMousePosition());
+            int old = Array.IndexOf(_handDragCards, _draggedHandCard);
+            beforeIndex = HandModelBeforeIndex(_handDragCards,
+                _handDragTarget + (old < _handDragTarget ? 1 : 0));
+        }
+        if (_handState.Move(drag.CardId, beforeIndex)) AnimateHandOrderChange(drag.CardId);
+        else if (_draggedHandCard?.FaceCardId == drag.CardId) _handDragCommitted = true;
     }
 
     private void MoveSelected(int direction)
@@ -196,7 +211,7 @@ public partial class Mesa
         int index = _handState.Order.ToList().IndexOf(id);
         int slot = direction < 0 ? index - 1 : index + 2;
         if (slot < 0 || slot > _handState.Order.Count) return;
-        _handState.Move(id, slot); RenderHand();
+        if (_handState.Move(id, slot)) AnimateHandOrderChange();
     }
 
     private bool CanDropDraft(Variant data)
@@ -206,6 +221,7 @@ public partial class Mesa
         {
             CardDragOrigin.Hand => _handState.Order.Contains(drag.CardId) && !Assigned(drag.CardId),
             CardDragOrigin.External => _handState.ExternalCardId == drag.CardId && !Assigned(drag.CardId),
+            CardDragOrigin.Published => _handState.CanStagePublishedCard(drag.CardId),
             _ => false
         };
     }
@@ -222,9 +238,11 @@ public partial class Mesa
     private void PrepareSelected()
     {
         int target = _targetGame.GetSelectedId();
-        if (!_handState.PrepareGroup(target > 0 ? target : null))
+        int? source = _handState.SelectedIds.Count > 0 ? _handState.SelectedIds[0] :
+            _handState.ExternalSelected ? _handState.ExternalCardId : null;
+        if (source is not int id || !_handState.StageCards(id, target > 0 ? target : null))
         {
-            Message("Selecciona de 3 a 13 cartas para un juego nuevo, o cartas nuevas para ampliar un juego propio. No se pueden repetir cartas entre borradores.");
+            Message("Selecciona cartas para preparar un juego nuevo o ampliar uno propio. Completa al menos tres cartas antes de confirmar.");
             RefreshSelection(); return;
         }
         Message("Combinacion preparada localmente. Revisa su orden antes de enviarla.");
@@ -240,16 +258,19 @@ public partial class Mesa
         {
             int groupIndex = index;
             VisualGroupDraft draft = _handState.Groups[index];
-            var row = new VBoxContainer { Name = "Borrador" + index, MouseFilter = MouseFilterEnum.Pass };
-            var header = new HBoxContainer { Name = "Header", MouseFilter = MouseFilterEnum.Pass };
-            header.AddChild(Text(draft.MeldId is int meld ? "Ampliacion del juego " + meld : "Juego nuevo " + (index + 1), 14));
-            var remove = new Button { Text = "Quitar", Disabled = !CanEdit };
+            var row = new Control { Name = "Borrador" + index, MouseFilter = MouseFilterEnum.Pass };
+            var background = new Panel { Name = "PendingFrame", MouseFilter = MouseFilterEnum.Ignore, ShowBehindParent = true };
+            background.AddThemeStyleboxOverride("panel", PendingGameStyle()); row.AddChild(background);
+            row.TooltipText = (draft.MeldId is int meld ? "Edición del juego " + meld : "Juego nuevo " + (index + 1)) + " · Sin confirmar";
+            var remove = new Button { Name = "RemoveButton", Text = "×", Disabled = !CanEdit,
+                CustomMinimumSize = new Vector2(44, 44), TooltipText = "Quitar esta preparación y devolver sus cartas" };
+            remove.AddThemeFontSizeOverride("font_size", 22);
             remove.Pressed += () =>
             {
                 if (!CanEdit) return;
                 _handState.RemoveGroup(groupIndex); RenderDrafts(); RefreshSelection();
             };
-            header.AddChild(remove); row.AddChild(header);
+            row.AddChild(remove);
             var flow = new HFlowContainer { Name = "Cards", MouseFilter = MouseFilterEnum.Pass };
             flow.AddThemeConstantOverride("h_separation", 6); row.AddChild(flow); _draftRows.AddChild(row);
             foreach (int id in draft.Cards)
@@ -291,6 +312,7 @@ public partial class Mesa
 
     private void SelectExternal(bool selected)
     {
+        if (selected && TryChooseExternal()) return;
         if (CanEdit) _handState.SelectExternal(selected);
         RefreshSelection();
     }
@@ -304,6 +326,7 @@ public partial class Mesa
         // Conectar una sola vez en Ready; la identidad se comprueba en el callback.
         card.DragDataRequested = () =>
         {
+            if (NeedsExternalChoice) return default;
             if (!CanEdit || _interactionView is not { } view || !_handState.SelectExternal(true)) return default;
             RefreshSelection(); return CardDragData.Create(view, source, CardDragOrigin.External);
         };
@@ -312,6 +335,7 @@ public partial class Mesa
     private void ToggleExternal(int id)
     {
         if (!CanEdit || _handState.ExternalCardId != id) return;
+        if (TryChooseExternal()) return;
         _handState.SelectExternal(!_handState.ExternalSelected); RefreshSelection();
     }
 
@@ -346,6 +370,7 @@ public partial class Mesa
             initialKind: request.InitialKind, cards: request.Cards);
         if (id <= 0) { Message("No se pudo enviar la solicitud. Revisa la conexion."); return; }
         _pendingRequest = id; _pendingSession = view.Session;
+        _pendingKind = request.Kind;
         _pendingUntil = Time.GetTicksMsec() + 10000;
         Message("Validando jugada…");
         RefreshSelection(); RenderDrafts();
@@ -356,37 +381,56 @@ public partial class Mesa
         if (reply.RequestId != _pendingRequest || _pendingRequest == 0 ||
             _interactionView?.Session != _pendingSession) return;
         _pendingRequest = 0;
+        if (!reply.Success && _pendingKind is ActionKind.Pay or ActionKind.ExchangeCard)
+            _stagedCardId = null;
         // El resultado visible siempre viene de ViewChanged; Reply no retira cartas.
-        if (reply.Success) _handState.ClearGroups();
+        if (reply.Success && _pendingKind is not (ActionKind.ChooseOffer or ActionKind.ChooseDiscard or ActionKind.JoinRematch))
+            _handState.ClearGroups();
+        if (reply.Success && _pendingKind is ActionKind.ChooseOffer or ActionKind.ChooseDiscard)
+            _handState.SelectExternal(true);
         Message(reply.Message + (reply.Penalized ? " Has sido eliminado por esta declaracion." : ""));
         RenderDrafts(); RefreshSelection();
     }
 
     public override void _Process(double delta)
     {
+        if (_ready) ProcessDealAnimation(delta);
+        if (_ready) ProcessHandDrag();
         // FlowContainer coloca las cartas de forma diferida; seguir sus límites visibles.
         if (_ready && _casinoInitialized) PositionPasaButton();
+        if (_ready) UpdateCountdowns();
+        if (_ready) RefreshTableStatus();
         if (_pendingRequest == 0 || Time.GetTicksMsec() < _pendingUntil) return;
         _pendingRequest = 0;
+        if (_pendingKind is ActionKind.Pay or ActionKind.ExchangeCard) _stagedCardId = null;
         Message("No se recibio confirmacion. La mesa conserva el estado recibido del servidor; revisa la conexion antes de volver a intentar.");
         RenderDrafts(); RefreshSelection();
     }
 
     private void RefreshSelection()
     {
+        int[] selected = _handState.SelectedIds.ToArray();
+        int? external = _handState.ExternalSelected ? _handState.ExternalCardId : null;
+        bool formsGame = HandSelectionHint.FormsMeld(selected, external);
         foreach (Carta card in _hand.GetChildren().OfType<Carta>())
             if (card.FaceCardId is int id)
             {
-                card.SetInteraction(CanEdit, _handState.SelectedIds.Contains(id) || Assigned(id));
+                bool isSelected = selected.Contains(id);
+                card.SetInteraction(CanEdit, isSelected || Assigned(id));
+                card.SetHandSelection(isSelected, formsGame);
                 card.TooltipText = Assigned(id) ? "Incluida en un borrador; sigue en tu mano hasta la confirmacion." :
                     "Click o Enter: seleccionar. Arrastrar: ordenar o preparar combinacion.";
             }
         BindExternalCard(_offered, _interactionView?.OfferedCard);
         BindExternalCard(_discard, _interactionView?.DiscardTop);
+        _offered.SetGameIndicator(CanEdit && formsGame && external == _offered.FaceCardId);
+        _discard.SetGameIndicator(CanEdit && formsGame && external == _discard.FaceCardId);
+        RefreshPublishedCards();
         _selectionLabel.Text = _handState.SelectedIds.Count + " cartas seleccionadas" +
             (_handState.ExternalSelected ? " + carta publica" : "") + " · " + _handState.Groups.Count + " borradores";
         _selectionLabel.Visible = _handState.SelectedIds.Count > 0 || _handState.ExternalSelected || _handState.Groups.Count > 0;
-        GetNode<Label>(InteractionPath + "HintLabel").Visible = _handState.Groups.Count > 0;
+        GetNode<Label>(InteractionPath + "HintLabel").Visible = false;
+        _selectionLabel.Visible = false;
         _externalSelect.SetPressedNoSignal(_handState.ExternalSelected);
         _externalSelect.Disabled = !CanEdit || _handState.ExternalCardId is null ||
             _handState.ExternalCardId is int source && Assigned(source);
@@ -407,6 +451,8 @@ public partial class Mesa
             InteractionActions.CanRequest(_interactionView, ActionKind.DrawDiscard);
         _declareWin.Disabled = !CanSend;
         RefreshDynamicInteraction();
+        RefreshTableEditing();
+        UpdateCountdowns();
     }
 
     private void Message(string text)

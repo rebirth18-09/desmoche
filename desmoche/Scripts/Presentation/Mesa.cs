@@ -64,6 +64,12 @@ public partial class Mesa : Control
         _rematch.Pressed += RestartLocal;
         InitializeInteraction();
         InitializeCasino();
+        InitializeCountdowns();
+        InitializeDealAnimation();
+        InitializeFinalHands();
+        InitializeHandDrag();
+        InitializeTableEditing();
+        InitializeTableActions();
         _offered.SelectionRequested += ToggleExternal;
         _discard.SelectionRequested += ToggleExternal;
         _ready = true;
@@ -83,6 +89,7 @@ public partial class Mesa : Control
 
     public void Unbind()
     {
+        CancelDealAnimation();
         if (_session is not null)
         {
             _session.ViewChanged -= OnViewChanged;
@@ -101,14 +108,18 @@ public partial class Mesa : Control
         _rematch.Pressed -= RestartLocal;
         _offered.SelectionRequested -= ToggleExternal;
         _discard.SelectionRequested -= ToggleExternal;
+        _finalHandClose.Pressed -= CloseFinalHand;
+        _finalDeckButton.Pressed -= ShowFinalDeck;
+        AbortHandDrag();
         DisposeDynamicInteraction();
         DisposeCasino();
+        DisposeDealAnimation();
         _ready = false;
     }
 
     public void FocusDefault()
     {
-        if (_ready && Visible && !_leave.Disabled) _leave.GrabFocus();
+        if (_ready && Visible) _tableMenu.GrabFocus();
     }
 
     private void OnViewChanged(SnapshotDto view) => RefreshNetworkView();
@@ -116,6 +127,7 @@ public partial class Mesa : Control
     private void RestartLocal()
     {
         if (_session is LocalGameSession local) local.Restart();
+        else RequestAction(ActionKind.JoinRematch);
     }
 
     private void LeaveRoom()
@@ -131,7 +143,6 @@ public partial class Mesa : Control
         _leave.Disabled = _session?.IsActive != true;
         _leave.Text = _session?.IsLocal == true ? "Salir de partida" :
             _session?.CanManageMatch == true ? "Cerrar sala" : "Salir de sala";
-        _rematch.Visible = _session is { IsLocal: true, View.Phase: GamePhase.Finished };
         DisplaySnapshot(_session?.View, _session?.Status ?? "Esperando estado de la partida.");
     }
 
@@ -139,12 +150,19 @@ public partial class Mesa : Control
     public void DisplaySnapshot(SnapshotDto? view, string connectionStatus)
     {
         if (!_ready) throw new InvalidOperationException("Mesa debe estar lista antes de representar datos.");
+        if (QueueDealSnapshot(view, connectionStatus)) return;
+        SnapshotDto? previous = _interactionView;
+        bool beginDeal = ShouldAnimateDeal(previous, view);
         SynchronizeInteraction(view);
+        SynchronizeCountdowns(view);
+        SynchronizeFinalHands(view);
         _connection.Text = connectionStatus;
         _challengedMeld = null;
         GetNode<Label>(ContentPath + "Table/Padding/Surface/MyGame/TitleLabel").Text = "Mi juego";
         Clear(_players); Clear(_selfPlayer); Clear(_hand);
+        _dealPlayerCounts.Clear();
         Clear(_rivalGames); Clear(_ownGames); Clear(_revealed);
+        _tableEditButtons.Clear();
         _offerZone.Visible = false; _revealedZone.Visible = false;
         _result.Text = ""; _result.Visible = false;
         _response.Text = ""; _response.Visible = false;
@@ -160,7 +178,8 @@ public partial class Mesa : Control
             QueueCasinoLayout();
             return;
         }
-        _phase.Text = PhaseName(view.Phase); _turn.Text = TurnText(view);
+        _phase.Text = view.OrderChallenge?.Reason == PasaReason.UnusedOffer ? "Oferta obligatoria sin jugar" : PhaseName(view.Phase);
+        _turn.Text = TurnText(view);
         _deckCount.Text = view.DeckCount + " cartas";
         _discardCount.Text = view.DiscardCount + " cartas";
         if (view.DeckCount > 0) _deck.ShowBack(); else _deck.ShowEmpty("AGOTADO");
@@ -179,6 +198,8 @@ public partial class Mesa : Control
         _handTitle.Text = "Mis cartas · " + view.OwnHand.Length + " cartas";
         _handEmpty.Visible = view.OwnHand.Length == 0;
         _handEmpty.Text = "No tienes cartas en la mano.";
+        if (view.OwnSpectating)
+        { _handTitle.Text = "Observando la partida"; _handEmpty.Text = "Sigues alojando la sala como espectador."; }
         MeldDto[] own = view.Melds.Where(m => m.OwnerId == view.RecipientId).OrderBy(m => m.Id).ToArray();
         bool initialWinner = IsInitialWinner(view, view.RecipientId);
         _meldEmpty.Visible = own.Length == 0 && !initialWinner;
@@ -194,6 +215,7 @@ public partial class Mesa : Control
         {
             _response.Visible = true;
             _response.Text = view.OwnResponseSubmitted ? "No tienes respuestas pendientes." : "Tu respuesta está pendiente.";
+            if (view.OwnSpectating) _response.Text = "Observas esta partida.";
         }
         if (view.Phase == GamePhase.Finished)
         {
@@ -203,17 +225,10 @@ public partial class Mesa : Control
                   (view.Result == MatchResult.InitialVictory ? " · " +
                       (view.InitialVictory is { } proof ? InitialVictoryName(proof.Kind) : "Victoria inicial") : " · Desmoche")
                 : "Partida finalizada";
-            if (view.WinnerPlayerId is not null &&
-                view.Result is MatchResult.Desmoche or MatchResult.InitialVictory)
-            {
-                foreach (RevealedHandDto reveal in view.RevealedHands.Where(h => h.PlayerId != view.RecipientId))
-                    AddCardRow(_revealed, PlayerName(view, reveal.PlayerId) + " · " +
-                        reveal.Cards.Length + " cartas", reveal.Cards);
-                _revealedZone.Visible = _revealed.GetChildCount() > 0;
-            }
         }
         RenderDrafts(); RefreshSelection();
         QueueCasinoLayout();
+        if (beginDeal) BeginDealAnimation(view!, connectionStatus);
     }
 
     private void AddPlayer(HFlowContainer parent, PublicPlayerDto player, SnapshotDto view)
@@ -242,8 +257,14 @@ public partial class Mesa : Control
         if (_session?.IsLocal == true && !player.Eliminated) state = self ? "Partida local" : "Listo";
         if (!player.Connected && player.Eliminated) state += " · Eliminado";
         if (active) state += view.Phase == GamePhase.AwaitingPayment ? " · Debe pagar" : " · Turno";
-        content.AddChild(Text(state, self ? 13 : 16, active ? new Color(1f, 0.82f, 0.40f) : new Color(0.66f, 0.77f, 0.78f)));
-        content.AddChild(Text(player.CardCount + " cartas en mano", self ? 13 : 16));
+        Label stateLabel = Text(state, self ? 13 : 16, active ? new Color(1f, 0.82f, 0.40f) : new Color(0.66f, 0.77f, 0.78f));
+        stateLabel.AutowrapMode = TextServer.AutowrapMode.Off;
+        stateLabel.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+        content.AddChild(stateLabel);
+        Label countLabel = Text(player.CardCount + " cartas en mano", self ? 13 : 16);
+        countLabel.AutowrapMode = TextServer.AutowrapMode.Off;
+        content.AddChild(countLabel);
+        _dealPlayerCounts.Add(player.Id, countLabel);
         parent.AddChild(panel); // Este panel nunca contiene identidades de cartas.
     }
 
@@ -268,6 +289,7 @@ public partial class Mesa : Control
             empty.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         }
         _rivalGames.AddChild(column);
+        AddFinalHandButton(player, view, rows);
     }
 
     private void AddMeld(Control parent, MeldDto meld)
@@ -277,10 +299,11 @@ public partial class Mesa : Control
         cards.AddThemeConstantOverride("v_separation", 5);
         parent.AddChild(cards);
         for (int i = 0; i < meld.Cards.Length; i++) AddCard(cards, meld.Cards[i], "Carta" + i);
-        if (_interactionView?.OrderChallenge?.PlayerId == meld.OwnerId && _challengedMeld is null &&
-            !RulesValidator.HasAlternatingSetOrder(meld.Cards.Select(Card.FromId).ToArray()))
+        if (_interactionView?.OrderChallenge is { } challenge && challenge.PlayerId == meld.OwnerId && _challengedMeld is null &&
+            (challenge.Reason == PasaReason.UnusedOffer ? challenge.MeldId == meld.Id :
+                !RulesValidator.HasAlternatingSetOrder(meld.Cards.Select(Card.FromId).ToArray())))
             _challengedMeld = cards;
-        if (parent == _ownGames) BindOwnMeldDrop(cards, meld.Id);
+        if (parent == _ownGames) { BindOwnMeldDrop(cards, meld.Id); RegisterTableMeld(meld.Id); }
         else cards.MouseFilter = MouseFilterEnum.Ignore;
     }
 
@@ -376,7 +399,8 @@ public partial class Mesa : Control
             : "Turno de " + PlayerName(view, view.CurrentPlayerId),
         GamePhase.AwaitingClaims => "Carta ofrecida · Esperando respuestas",
         GamePhase.AwaitingPayment => "Pago pendiente · " + PlayerName(view, view.PaymentPlayerId),
-        GamePhase.AwaitingOrderChallenge => "Pasa · 3 segundos para señalar el orden de " + PlayerName(view, view.OrderChallenge?.PlayerId),
+        GamePhase.AwaitingOrderChallenge => "Pasa · " + (view.Settings ?? MatchSettings.Default).PasaSeconds + " segundos · " + PlayerName(view, view.OrderChallenge?.PlayerId) +
+            (view.OrderChallenge?.Reason == PasaReason.UnusedOffer ? " dejó pasar una carta que entra en su juego" : " no alternó los colores"),
         GamePhase.Finished => "No hay turno activo",
         _ => "Esperando estado"
     };

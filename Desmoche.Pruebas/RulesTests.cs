@@ -282,13 +282,13 @@ public static class RulesTests
             RuleError.None, "Peladilla sin juegos ni proyectos con una carta.");
 
         CheckPeladillaReplacement(Suit.Diamonds, 3, 2,
-            "Dos del mismo rango permiten peladilla si no hay juegos.");
+            "Dos del mismo rango excluyen peladilla: otra carta completa la tercia.");
         CheckPeladillaReplacement(Suit.Clubs, 6, 3,
-            "Dos consecutivas sin tercera permiten peladilla.");
+            "Dos consecutivas excluyen peladilla aunque falte la tercera.");
         CheckPeladillaReplacement(Suit.Clubs, 6, 4,
-            "Dos con hueco sin tercera permiten peladilla.");
+            "Dos con hueco excluyen peladilla: una carta completa la escalera.");
         CheckPeladillaReplacement(Suit.Hearts, 4, 1,
-            "Q-A sin K no forma juego y permite peladilla.");
+            "Q-A del mismo palo excluye peladilla aunque falte K.");
 
         Expect(RulesValidator.ValidateInitialVictory(
             lowHand, InitialVictoryKind.Peladilla),
@@ -374,7 +374,22 @@ public static class RulesTests
             RulesValidator.ValidateInitialVictory(
                 h, InitialVictoryKind.Peladilla).IsValid
                     == ReferencePeladilla(h)),
-            "Peladilla coincide con busqueda independiente en 133 manos.");
+            "Peladilla coincide con busqueda independiente de juegos y proyectos en 133 manos.");
+
+        Card[] standardCards = Enumerable.Range(0, Card.StandardDeckSize).Select(Card.FromId).ToArray();
+        int pairCases = 0;
+        bool pairsMatch = true;
+        for (int a = 0; a < standardCards.Length; a++)
+            for (int b = a + 1; b < standardCards.Length; b++)
+            {
+                Card[] pair = { standardCards[a], standardCards[b] };
+                bool canComplete = standardCards.Where(c => c.Id != pair[0].Id && c.Id != pair[1].Id)
+                    .Any(c => ReferenceTriple(pair[0], pair[1], c));
+                pairsMatch &= RulesValidator.IsPeladilla(pair) == !canComplete;
+                pairCases++;
+            }
+        Check(pairCases == 1326 && pairsMatch,
+            "Las 1326 parejas posibles coinciden con una busqueda de todas las cartas que pueden completarlas.");
 
         Check(RulesValidator.ValidateDesmoche(tenHand, G(), tenGroups) ==
               RulesValidator.ValidateDesmoche(tenHand, G(), tenGroups),
@@ -455,11 +470,11 @@ public static class RulesTests
 
             Expect(RulesValidator.ValidateInitialVictory(
                 changed, InitialVictoryKind.Peladilla),
-                RuleError.None, description);
+                RuleError.InvalidInitialDeclaration, description);
         }
     }
 
-    // Oraculo independiente: busca cada terna existente sin importar el orden.
+    // Oraculo independiente: ternas actuales y parejas con cualquier carta ausente.
     private static bool ReferencePeladilla(PlayerHand hand)
     {
         IReadOnlyList<Card> cards = hand.Cards;
@@ -474,7 +489,11 @@ public static class RulesTests
                         return false;
                 }
 
-                // No se agregan cartas hipoteticas: solo juegos de la mano recibida.
+                for (int id = 0; id < Card.StandardDeckSize; id++)
+                {
+                    if (!hand.Contains(id) && ReferenceTriple(cards[i], cards[j], Card.FromId(id)))
+                        return false;
+                }
             }
         }
 

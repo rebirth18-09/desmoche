@@ -275,6 +275,8 @@ public static class GameManagerTests
         }
         Check(drawGame.Phase == GamePhase.Finished && drawGame.Result == MatchResult.Draw &&
             drawGame.WinnerPlayerId is null, "Sin fuentes legales termina en empate.");
+        Check(drawGame.GetViewFor(1).Cards.RevealedHands.Count == drawGame.Players.Count,
+            "El motor revela todas las manos al terminar en empate.");
 
         Console.WriteLine("PARTIDA: " + checks + " comprobaciones correctas.");
         Console.WriteLine("SIMULACION: preparacion, intercambio, apertura, turnos, reclamos, pagos, victoria y empate verificados.");

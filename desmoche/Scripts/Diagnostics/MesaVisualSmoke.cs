@@ -116,12 +116,15 @@ public partial class MesaVisualSmoke : Main
         int[] allowed = view.OwnHand.Concat(view.Melds.SelectMany(m => m.Cards))
             .Concat(view.DiscardTop is int top ? new[] { top } : Array.Empty<int>())
             .Concat(view.OfferedCard is int card ? new[] { card } : Array.Empty<int>())
-            .Concat(winning ? view.RevealedHands.Where(h => h.PlayerId != view.RecipientId).SelectMany(h => h.Cards)
+            .Concat(winning && view.InitialVictory is { } proof ? proof.Cards
                 : Array.Empty<int>()).OrderBy(id => id).ToArray();
         Check(VisibleFaceIds(_mesa).OrderBy(id => id).SequenceEqual(allowed),
             "No hay identidades adicionales a las autorizadas.");
-        Check(revealed.Visible == (winning && view.RevealedHands.Any(h => h.PlayerId != view.RecipientId)),
-            "Revelación solo al terminar con ganador.");
+        Check(!revealed.Visible, "Las manos finales se consultan por rival, sin revelación al pie.");
+        foreach (var rival in rivals)
+            Check(_mesa.HasNode(Mesa.FinalHandButtonPath(rival.Id)) ==
+                (view.Phase == GamePhase.Finished && view.RevealedHands.Any(h => h.PlayerId == rival.Id)),
+                "Mostrar juego solo aparece con revelación autorizada.");
         Check(_mesa.GetNode<Label>(Mesa.CenterPath + "Mazo/Content/CountLabel").Text == view.DeckCount + " cartas",
             "Contador refleja dato del servidor.");
         int? active = view.Phase == GamePhase.AwaitingDraw ? view.CurrentPlayerId :
@@ -247,11 +250,12 @@ public partial class MesaVisualSmoke : Main
             RevealedHands = new[] { new RevealedHandDto(1, Array.Empty<int>()),
                 new RevealedHandDto(2, Enumerable.Range(13, 9).ToArray()) }
         };
-        // Dato de revelación deliberadamente inesperado: la UI debe suprimirlo en empate.
+        // Empate final también autoriza la consulta individual de las manos.
         return played with
         { Phase = GamePhase.Finished, CurrentPlayerId = null, Result = MatchResult.Draw, DeckCount = 0,
             DiscardCount = 34, DiscardTop = 51,
-            RevealedHands = new[] { new RevealedHandDto(2, Enumerable.Range(13, 9).ToArray()) } };
+            RevealedHands = new[] { new RevealedHandDto(1, played.OwnHand.ToArray()),
+                new RevealedHandDto(2, Enumerable.Range(13, 9).ToArray()) }, FinalDeck = Array.Empty<int>() };
     }
 
     private void Check(bool condition, string message)

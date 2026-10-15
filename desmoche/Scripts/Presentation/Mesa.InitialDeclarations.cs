@@ -20,7 +20,7 @@ public partial class Mesa
         _declareColor.Pressed += () => SendInitial(InitialVictoryKind.Color, _handState.Order.ToArray());
         _declarePeladilla.Pressed += () => SendInitial(InitialVictoryKind.Peladilla, null);
         _declareColor.TooltipText = "Ordena toda tu mano de menor a mayor. El As puede ir al principio o al final.";
-        _declarePeladilla.TooltipText = "Declara que no se puede formar ningún juego. Si existe uno aunque esté desordenado, quedas eliminado.";
+        _declarePeladilla.TooltipText = "Declara que no hay juegos ni proyectos que complete una carta más. Si los hay, aunque estén desordenados, quedas eliminado.";
     }
 
     private void RefreshInitialDeclarations()
@@ -29,8 +29,8 @@ public partial class Mesa
         bool initial = InteractionActions.CanRequest(view, ActionKind.DeclareInitial);
         bool afterExchange = initial && view!.Phase == GamePhase.InitialDeclarations;
         Card[] order = _handState.Order.Select(Card.FromId).ToArray();
-        _declareColor.Visible = afterExchange && order.Length == 9 && RulesValidator.IsColor(order);
-        _declarePeladilla.Visible = afterExchange && order.Length == 9 &&
+        _declareColor.Visible = afterExchange && (view!.Settings ?? MatchSettings.Default).ColorEnabled && order.Length == 9 && RulesValidator.IsColor(order);
+        _declarePeladilla.Visible = afterExchange && (view!.Settings ?? MatchSettings.Default).PeladillaEnabled && order.Length == 9 &&
             !InitialHandPresentation.HasVisibleMeld(order);
         _declareInitial.Visible = FindInitialDeclaration() is not null;
         _declareInitial.Disabled = _declareColor.Disabled = _declarePeladilla.Disabled = !CanSend;
@@ -42,7 +42,7 @@ public partial class Mesa
         if (InteractionActions.CanRequest(view, ActionKind.DeclareInitial))
         {
             var choice = InitialHandPresentation.FindOrderedVictory(_handState.Order,
-                view.Phase == GamePhase.InitialDeclarations);
+                view.Phase == GamePhase.InitialDeclarations, view.Settings);
             if (choice is not null) return (choice.Value.Kind, choice.Value.Cards, false);
         }
         if (view.OpeningOffer && InteractionActions.CanRequest(view, ActionKind.Claim))
@@ -51,7 +51,7 @@ public partial class Mesa
             if (plays.Length != 1 || plays[0].MeldId is not null || view.OfferedCard is not int offer) return null;
             var hand = new PlayerHand(view.OwnHand.Select(Card.FromId));
             foreach (InitialVictoryKind kind in InitialHandPresentation.CombinationKinds)
-                if (RulesValidator.ValidateInitialVictory(hand, kind,
+                if ((view.Settings ?? MatchSettings.Default).Allows(kind) && RulesValidator.ValidateInitialVictory(hand, kind,
                     plays[0].Cards.Select(Card.FromId).ToArray(), Card.FromId(offer)).IsValid &&
                     RulesValidator.HasAlternatingSetOrder(plays[0].Cards.Select(Card.FromId).ToArray()))
                     return (kind, plays[0].Cards, true);

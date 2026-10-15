@@ -208,10 +208,13 @@ public partial class MesaDynamicSmoke : Main
                 Vector2 end = new(cardRects.Max(rect => rect.End.X), cardRects.Max(rect => rect.End.Y));
                 Rect2 target = new(start, end - start), button = pasa.GetGlobalRect();
                 Check(pasa.IsVisibleInTree() && !Overlaps(target, button), "Pasa queda al lado del grupo, sin tapar sus cartas.");
-                Check(Math.Abs(button.Position.X - target.End.X - 8) < 2 ||
-                    Math.Abs(target.Position.X - button.End.X - 8) < 2 ||
-                    Math.Abs(button.Position.Y - target.End.Y - 6) < 2,
-                    "Pasa queda a ocho píxeles del lado o a seis debajo de las cartas reales, sin espacio vacío.");
+                Rect2 clock = _mesa.GetNode<MesaActionClock>(Mesa.PasaClockPath).GetGlobalRect();
+                Rect2 action = button.Merge(clock);
+                float gapX = Math.Max(0, Math.Max(action.Position.X - target.End.X, target.Position.X - action.End.X));
+                float gapY = Math.Max(0, Math.Max(action.Position.Y - target.End.Y, target.Position.Y - action.End.Y));
+                Check(_mesa.GetNode<MesaActionClock>(Mesa.PasaClockPath).IsVisibleInTree() &&
+                    !Overlaps(target, clock) && new Vector2(gapX, gapY).Length() <= 52,
+                    "Pasa y su círculo quedan juntos y próximos a las cartas reales, sin taparlas. grupo=" + target + " acción=" + action);
                 Check(!Overlaps(button, _mesa.GetNode<Control>(Mesa.CenterPath + "Mazo/Content/TitleLabel").GetGlobalRect()),
                     "Pasa no tapa el nombre del mazo.");
                 Check(!Cards(_mesa.GetNode(Mesa.RivalGamesPath)).Any(c => Overlaps(button, c.GetGlobalRect())),
@@ -389,8 +392,9 @@ public partial class MesaDynamicSmoke : Main
             await NativeDrop(HandCard(18), published.GetGlobalTransformWithCanvas() * (published.Size / 2));
             Check(_mesa.LocalDraftCount == 1 && DraftIds(0).SequenceEqual(new[] { 15, 16, 17, 18 }),
                 "El arrastre nativo identifica automáticamente el juego propio que se amplía.");
-            Check(Cards(_mesa.GetNode(Mesa.OwnGamesPath)).Select(card => card.FaceCardId!.Value)
-                    .Contains(17), "El juego autoritativo sigue representado hasta la confirmación.");
+            Check(!_mesa.GetNode<Control>(Mesa.OwnGamesPath + "/Juego7").Visible && DraftIds(0).Contains(17) &&
+                _shown.Melds.Single(m => m.Id == 7).Cards.SequenceEqual(new[] { 15, 16, 17 }),
+                "La edición sustituye el dibujo del publicado conservando el juego autoritativo hasta confirmar.");
         }
         else newGroup._DropData(Vector2.Zero, CardDragData.Create(_shown, 2, CardDragOrigin.Hand));
         Variant oldToken = CardDragData.Create(_shown, 2, CardDragOrigin.Hand);
@@ -411,8 +415,8 @@ public partial class MesaDynamicSmoke : Main
         Check(_mesa.StagedCardId == 18 && accept.IsVisibleInTree() && accept.Disabled,
             "Aceptar aparece al preparar una carta y requiere conexión real para enviar.");
         Check(_mesa.GetNode<Carta>(Mesa.CenterPath + "Pago/Content/Carta").FaceCardId == 18 &&
-            _shown.OwnHand.Contains(18) && HandCard(18).FaceCardId == 18,
-            "La carta preparada continúa en la mano recibida del servidor.");
+            _shown.OwnHand.Contains(18) && HandCard(18).FaceCardId == 18 && !HandCard(18).Visible,
+            "La carta preparada continúa en la mano real y se dibuja únicamente en la casilla.");
         if (_captureDirectory.Length > 0)
         {
             await Settle();
@@ -424,7 +428,8 @@ public partial class MesaDynamicSmoke : Main
         Check(!slot._CanDropData(Vector2.Zero, absent), "El pago rechaza cartas ajenas.");
         Button cancel = _mesa.GetNode<Button>(Mesa.ContentPath + "ContextActions/CancelCardButton");
         Gesture(() => cancel.EmitSignal(Button.SignalName.Pressed), "Cancelar el pago solo libera su intención local.");
-        Check(_mesa.StagedCardId is null && !accept.IsVisibleInTree(), "Cancelar oculta de nuevo la confirmación.");
+        Check(_mesa.StagedCardId is null && !accept.IsVisibleInTree() && HandCard(18).Visible,
+            "Cancelar oculta la confirmación y devuelve la carta a su mano.");
         slot._DropData(Vector2.Zero, payDrag);
         Show(payment with { Revision = 2, Window = 3 });
         Check(_mesa.StagedCardId is null, "Cambiar la ventana descarta un pago que todavía no se envió.");
@@ -437,8 +442,8 @@ public partial class MesaDynamicSmoke : Main
         Check(slot.IsVisibleInTree() && slot._CanDropData(Vector2.Zero, exchangeDrag),
             "El intercambio inicial también permite preparar una carta mediante la casilla contextual.");
         Gesture(() => slot._DropData(Vector2.Zero, exchangeDrag), "El intercambio no entrega la carta antes de aceptar.");
-        Check(_mesa.StagedCardId == 0 && exchange.OwnHand.Length == 9 && accept.IsVisibleInTree(),
-            "Preparar el intercambio conserva las nueve cartas hasta la respuesta autoritativa.");
+        Check(_mesa.StagedCardId == 0 && exchange.OwnHand.Length == 9 && accept.IsVisibleInTree() && !HandCard(0).Visible,
+            "Preparar el intercambio conserva nueve cartas reales y muestra la preparada solo en la casilla.");
         if (_captureDirectory.Length > 0)
         {
             await Settle();

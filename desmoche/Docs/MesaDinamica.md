@@ -2,7 +2,11 @@
 
 > Actualización 12/10/2026: las reglas de victoria, intercambio, Pasa y acceso por código se detallan en [RevisionReglasCodigoSala.md](RevisionReglasCodigoSala.md). Esa revisión prevalece sobre las instrucciones históricas de este documento.
 
+> Corrección posterior 14/10/2026: [PagoPreparado.md](PagoPreparado.md) muestra la carta preparada solo en la casilla y la conserva durante la solicitud, con devolución al cancelar o ante rechazo. Los contadores siguen representando la mano autoritativa.
+
 # Mesa dinámica — contrato de presentación de las fases 8 y 9
+
+> [EdicionEnMesa.md](EdicionEnMesa.md) sustituye la ubicación inferior por preparación/edición en Mi juego, Info completo y acciones dentro de una pantalla.
 
 ## 1. Objetivo de la fase
 
@@ -145,7 +149,7 @@ Privacidad: se dibuja `OwnHand` del destinatario; los rivales muestran nombres, 
 
 **F. Oferta y pozo.** Prepara una combinación que incorpore la oferta y pulsa **Tomar oferta**. **Rechazar oferta** conserva la acción de pasar. Si dos rivales reclaman, el servidor conserva la prioridad acordada a la derecha; la UI no resuelve la competencia. Cuando corresponda, prepara una combinación con la carta superior del pozo y solicita **Tomar pozo**. Ganar al tomar requiere marcar su control explícito.
 
-**G. Cambio inicial y pago.** Arrastra una carta a **Cambio inicial**: aparece **Aceptar** y la carta sigue contada en la mano. Usa **Cambiar carta**, prepara otra y acepta. El servidor conserva entrega a la derecha y recepción desde la izquierda. En **Pago**, repite: el drop no envía; aceptar limpia la preparación al solicitar y el snapshot retira la carta si el servidor acepta. Comprueba que no se duplican solicitudes mientras hay una pendiente.
+**G. Cambio inicial y pago.** Arrastra una carta a **Cambio inicial**: aparece **Aceptar** y la carta sigue contada en la mano, pero se dibuja solo en la casilla. Usa **Cambiar carta**, prepara otra y acepta. El servidor conserva entrega a la derecha y recepción desde la izquierda. En **Pago**, repite: el drop no envía; Aceptar conserva la carta en la casilla mientras espera y el snapshot la retira de la mano si el servidor acepta. Un rechazo la devuelve. Comprueba que no se duplican solicitudes mientras hay una pendiente.
 
 **H. Contexto y finalización.** Cambia de fase, desconecta o recibe una actualización que invalide una carta preparada: la casilla no debe conservar una carta ajena a la mano vigente. Comprueba continuar, publicar, desmoche y terminar sin pago en los contextos permitidos. Conserva las pruebas LAN aprobadas de finalización y desconexión.
 

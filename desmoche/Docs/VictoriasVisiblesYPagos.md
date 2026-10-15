@@ -1,5 +1,7 @@
 # Victorias visibles, Pasa y pagos — 12/10/2026
 
+> Corrección posterior: [Peladilla.md](Peladilla.md) reemplaza la validación de Peladilla descrita aquí. Parejas y proyectos con una carta futura ya no permiten ganar. Los resultados de simulación de esta entrega son históricos; se mantienen la evidencia visual, Pasa y la exclusión del pagador.
+
 Esta revisión sustituye el plazo de dos segundos y la prioridad provisional que permitía al pagador reclamar su propio pago. Conserva todas las condiciones de victoria inicial, según la confirmación del usuario.
 
 ## 1. Objetivo de la fase

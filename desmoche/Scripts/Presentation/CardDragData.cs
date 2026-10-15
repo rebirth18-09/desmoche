@@ -4,7 +4,7 @@ using Godot.Collections;
 
 namespace Desmoche.Presentation;
 
-public enum CardDragOrigin { Hand = 1, Draft = 2, External = 3 }
+public enum CardDragOrigin { Hand = 1, Draft = 2, External = 3, Published = 4 }
 public readonly record struct LocalCardDrag(int CardId, CardDragOrigin Origin, int GroupIndex);
 
 // Token de un gesto local. No es un comando de red ni sustituye la validacion del servidor.
@@ -29,10 +29,13 @@ public static class CardDragData
             !Number(map, "revision", out long revision) || revision != view.Revision ||
             !Number(map, "window", out long window) || window != view.Window ||
             !Number(map, "recipient", out long recipient) || recipient != view.RecipientId ||
-            !Number(map, "origin", out long origin) || origin is < 1 or > 3 ||
-            !Number(map, "group", out long group) || group is < -1 or > 16 ||
+            !Number(map, "origin", out long origin) || origin is < 1 or > 4 ||
+            !Number(map, "group", out long group) || group < -1 || group > int.MaxValue ||
             !Number(map, "card", out long card) || card is < 0 or > 51 ||
-            (origin == (long)CardDragOrigin.Draft ? group < 0 : group != -1)) return false;
+            (origin == (long)CardDragOrigin.Draft ? group is < 0 or > 16 :
+                origin == (long)CardDragOrigin.Published ? group <= 0 : group != -1)) return false;
+        if (origin == (long)CardDragOrigin.Published && !System.Linq.Enumerable.Any(view.Melds,
+            m => m.Id == group && m.OwnerId == view.RecipientId && System.Linq.Enumerable.Contains(m.Cards, (int)card))) return false;
         drag = new LocalCardDrag((int)card, (CardDragOrigin)origin, (int)group);
         return true;
     }

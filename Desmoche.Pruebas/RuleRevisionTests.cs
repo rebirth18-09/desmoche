@@ -19,7 +19,7 @@ public static class RuleRevisionTests
     public static void Run()
     {
         _checks = 0;
-        ExchangeAndPrivacy(); InitialRules(); Pasa(); AutomaticWins(); PaymentExclusion(); Codes();
+        ExchangeAndPrivacy(); InitialRules(); MeldReorganization(); Pasa(); AutomaticWins(); PaymentExclusion(); Codes();
         Console.WriteLine($"REVISION REGLAS Y CODIGOS: {_checks} comprobaciones correctas.");
     }
 
@@ -104,17 +104,165 @@ public static class RuleRevisionTests
         var badColor = new Fixture(new[] { red, Array.Empty<int>() });
         Check(badColor.TrySend(1, ActionKind.DeclareInitial, kind: InitialVictoryKind.Color, cards: red).Penalized,
             "Color desordenado no gana y se penaliza la declaracion.");
-        int[] noMeld = { C(2), D(2), H(4), S(6), C(8), D(10), H(12), S(13), C(11) };
+        int[] noMeld = { C(2), C(6), C(10), D(3), D(7), D(11), H(4), H(8), H(12) };
         var peladilla = new Fixture(new[] { noMeld, Array.Empty<int>() });
         peladilla.Send(1, ActionKind.DeclareInitial, kind: InitialVictoryKind.Peladilla);
-        Check(peladilla.Session.ViewFor(1).WinnerPlayerId == 1, "Una pareja sin juegos no excluye Peladilla.");
+        Check(peladilla.Session.ViewFor(1).WinnerPlayerId == 1, "Sin juegos ni proyectos con una carta se gana por Peladilla.");
         Check(peladilla.Session.ViewFor(2).InitialVictory?.Kind == InitialVictoryKind.Peladilla &&
             peladilla.Session.ViewFor(2).InitialVictory!.Cards.ToHashSet().SetEquals(noMeld),
             "Todos ven las nueve cartas que justifican Peladilla.");
+        int[][] projects = {
+            new[] { C(2), D(2), H(4), S(6), C(8), D(10), H(12), S(13), C(11) },
+            new[] { C(2), C(3), C(10), D(4), D(8), D(12), H(5), H(9), H(13) },
+            new[] { C(2), C(4), C(10), D(3), D(7), D(11), H(5), H(9), H(13) },
+            // Mano de Bot Bruno en la captura: parejas de 9 y Q, ademas de Q-K de picas.
+            new[] { S(2), S(13), H(11), H(9), S(12), H(1), C(9), C(12), C(4) }
+        };
+        foreach (int[] project in projects)
+            for (int count = 2; count <= 4; count++)
+            {
+                int[][] hands = Enumerable.Range(0, count).Select(_ => Array.Empty<int>()).ToArray();
+                hands[count - 1] = project;
+                var attempted = new Fixture(hands);
+                ReplyDto reply = attempted.TrySend(count, ActionKind.DeclareInitial, kind: InitialVictoryKind.Peladilla);
+                SnapshotDto rejected = attempted.Session.ViewFor(count);
+                Check(!reply.Success && reply.Penalized && rejected.Players.Single(p => p.Id == count).Eliminated,
+                    "Una pareja o proyecto elimina al declarar Peladilla despues del cambio, con 2–4 jugadores.");
+                Check(rejected.WinnerPlayerId != count && rejected.InitialVictory is null && rejected.RevealedHands.Length == 0,
+                    "Peladilla falsa no publica victoria ni revela manos rivales.");
+                Check(rejected.OwnHand.ToHashSet().SetEquals(project) && StateProjection.IsValidPublic(StateProjection.Public(rejected)),
+                    "La sancion conserva la mano, las 52 cartas y una replica publica valida.");
+            }
         var hidden = new Fixture(new[] { new[] { C(2), D(5), H(2), S(9), C(7), D(2), H(12), S(5), C(11) }, Array.Empty<int>() });
         ReplyDto falsePeladilla = hidden.TrySend(1, ActionKind.DeclareInitial, kind: InitialVictoryKind.Peladilla);
         Check(!falsePeladilla.Success && falsePeladilla.Penalized && hidden.Session.ViewFor(1).Players.Single(p => p.Id == 1).Eliminated,
             "Tercia oculta por desorden invalida Peladilla y elimina.");
+    }
+
+    private static void MeldReorganization()
+    {
+        int[] source = { D(1), D(2), D(3), D(4) };
+        int[] ownHand = source.Concat(new[] { C(1), C(2), D(5), D(12), D(11) }).ToArray();
+        for (int count = 2; count <= 4; count++)
+        {
+            int[][] hands = Enumerable.Range(0, count).Select(_ => Array.Empty<int>()).ToArray();
+            hands[count - 1] = ownHand;
+            var f = new Fixture(hands, new[] { H(1) }, ready: true);
+            f.Send(count, ActionKind.Publish, plays: new[] { Play(source) });
+            int donor = f.Session.ViewFor(count).Melds.Single().Id;
+            f.Send(1, ActionKind.DrawDeck);
+            PlayDto[] plays = { new(new[] { D(2), D(3), D(4) }, donor), Play(D(1), C(1), H(1)) };
+            f.Send(count, ActionKind.Claim, plays: plays);
+            SnapshotDto pending = f.Session.ViewFor(count);
+            Check(pending.Melds.Single().Cards.SequenceEqual(source) && pending.OwnHand.Length == 5,
+                "El reclamo no traslada cartas antes de resolver la prioridad.");
+            for (int id = 1; id < count; id++) f.Send(id, ActionKind.Pass);
+            SnapshotDto taken = f.Session.ViewFor(count);
+            Check(taken.Melds.Single(m => m.Id == donor).Cards.SequenceEqual(new[] { D(2), D(3), D(4) }) &&
+                taken.Melds.Single(m => m.Id != donor).Cards.SequenceEqual(new[] { D(1), C(1), H(1) }),
+                "As del extremo mas As de mano y oferta crea tercia y conserva 2-3-4.");
+            Check(taken.Phase == GamePhase.AwaitingPayment && taken.PaymentPlayerId == count && taken.OwnHand.Length == 4,
+                "Trasmochar durante reclamo conserva el pago y consume solo una carta propia de la mano.");
+            Check(taken.Players.All(p => !p.Eliminated) && StateProjection.IsValidPublic(StateProjection.Public(taken)),
+                "Reorganizacion valida no penaliza ni duplica identidades en las 52 cartas.");
+            f.Send(count, ActionKind.Pay, card: D(5));
+            Check(f.Session.ViewFor(count).OfferedCard == D(5), "El reclamo reorganizado permite pagar normalmente.");
+        }
+
+        var invalid = new Fixture(new[] { Array.Empty<int>(), ownHand }, new[] { H(1) }, ready: true);
+        invalid.Send(2, ActionKind.Publish, plays: new[] { Play(source) });
+        int sourceId = invalid.Session.ViewFor(2).Melds.Single().Id;
+        invalid.Send(1, ActionKind.DrawDeck);
+        SnapshotDto original = invalid.Session.ViewFor(2);
+        string before = NetworkProtocol.Encode(original with { OfferTiming = null });
+        foreach (PlayDto[] bad in new[] {
+            new[] { new PlayDto(new[] { D(1), D(3), D(4) }, sourceId), Play(D(2), C(2), H(1)) },
+            new[] { Play(D(1), C(1), H(1)) },
+            new[] { new PlayDto(source, sourceId), Play(D(1), C(1), H(1)) },
+            new[] { new PlayDto(new[] { D(2), D(3), D(4) }, sourceId) } })
+        {
+            ReplyDto reply = invalid.TrySend(2, ActionKind.Claim, plays: bad);
+            SnapshotDto unchanged = invalid.Session.ViewFor(2);
+            Check(!reply.Success && !reply.Penalized && NetworkProtocol.Encode(unchanged with {
+                Revision = original.Revision, OfferTiming = null }) == before &&
+                unchanged.OfferTiming!.CardId == original.OfferTiming!.CardId &&
+                unchanged.OfferTiming.Reservations.Length == original.OfferTiming.Reservations.Length &&
+                unchanged.OfferTiming.RemainingSelectionMilliseconds <= original.OfferTiming.RemainingSelectionMilliseconds,
+                "Origen roto, donante omitido, carta duplicada u oferta ausente se rechaza atomicamente.");
+        }
+        Check(!invalid.TrySend(1, ActionKind.Claim, plays: new[] {
+            new PlayDto(new[] { D(2), D(3), D(4) }, sourceId), Play(D(1), C(1), H(1)) }).Success,
+            "Otro jugador no puede apropiarse de un juego ajeno para reclamar.");
+
+        foreach (bool straight in new[] { false, true })
+        {
+            int[] origin = straight ? new[] { C(4), H(4), S(4), D(4) } : source;
+            int[] extra = straight ? new[] { D(5) } : new[] { C(1), S(1) };
+            int offered = straight ? D(6) : H(1);
+            int[] destination = straight ? new[] { D(4), D(5), D(6) } : new[] { D(1), C(1), H(1), S(1) };
+            int[] retained = straight ? origin.Take(3).ToArray() : origin.Skip(1).ToArray();
+            var claim = new Fixture(new[] { Array.Empty<int>(), origin.Concat(extra).ToArray() }, new[] { offered }, ready: true);
+            claim.Send(2, ActionKind.Publish, plays: new[] { Play(origin) });
+            int originId = claim.Session.ViewFor(2).Melds.Single().Id;
+            claim.Send(1, ActionKind.DrawDeck);
+            claim.Send(2, ActionKind.Claim, plays: new[] {
+                new PlayDto(retained, originId), Play(destination) });
+            claim.Send(1, ActionKind.Pass);
+            Check(claim.Session.ViewFor(2).Melds.Single(m => m.Id != originId).Cards.SequenceEqual(destination),
+                "La oferta tambien completa una cuarta o una escalera con una carta trasmochada.");
+        }
+
+        var repair = new Fixture(new[] { Array.Empty<int>(), new[] { D(2), D(3), D(4), D(5), C(2) } }, new[] { H(2) }, ready: true);
+        repair.Send(2, ActionKind.Publish, plays: new[] { Play(D(2), D(3), D(4)) });
+        int repairId = repair.Session.ViewFor(2).Melds.Single().Id;
+        repair.Send(1, ActionKind.DrawDeck);
+        Check(!repair.TrySend(2, ActionKind.Claim, plays: new[] {
+            new PlayDto(new[] { D(3), D(4), D(5) }, repairId), Play(D(2), C(2), H(2)) }).Success &&
+            repair.Session.ViewFor(2).Melds.Single().Cards.SequenceEqual(new[] { D(2), D(3), D(4) }),
+            "No se retira de una tercia aunque otra carta de mano pudiera reparar luego el origen.");
+
+        var lost = new Fixture(new[] { Array.Empty<int>(), source.Concat(new[] { C(1), S(1) }).ToArray() }, new[] { H(1) }, ready: true);
+        lost.Send(2, ActionKind.Publish, plays: new[] { Play(source) });
+        int lostId = lost.Session.ViewFor(2).Melds.Single().Id;
+        lost.Send(1, ActionKind.DrawDeck);
+        Check(!lost.TrySend(2, ActionKind.Claim, plays: new[] {
+            new PlayDto(new[] { D(2), D(3), D(4) }, lostId), Play(C(1), H(1), S(1)) }).Success &&
+            lost.Session.ViewFor(2).Melds.Single().Cards.SequenceEqual(source),
+            "Una carta publicada retirada no puede desaparecer aunque los grupos resultantes sean validos.");
+
+        int[] aces = { C(1), H(1), S(1) };
+        var fourth = new Fixture(new[] { source.Concat(aces).ToArray(), Array.Empty<int>() }, ready: true);
+        fourth.Send(1, ActionKind.Publish, plays: new[] { Play(source), Play(aces) });
+        MeldDto[] table = fourth.Session.ViewFor(1).Melds;
+        fourth.Send(1, ActionKind.Publish, plays: new[] {
+            new PlayDto(new[] { D(2), D(3), D(4) }, table[0].Id),
+            new PlayDto(aces.Append(D(1)).ToArray(), table[1].Id) });
+        Check(fourth.Session.ViewFor(1).Melds.Select(m => m.Cards.Length).SequenceEqual(new[] { 3, 4 }),
+            "Traslado a tercia existente completa cuarta sin reducir el origen a menos de tres.");
+
+        int[] set = { C(4), D(4), S(4), H(4) }, run = { H(1), H(2), H(3) };
+        var extend = new Fixture(new[] { set.Concat(run).ToArray(), Array.Empty<int>() }, ready: true);
+        extend.Send(1, ActionKind.Publish, plays: new[] { Play(set), Play(run) });
+        table = extend.Session.ViewFor(1).Melds;
+        extend.Send(1, ActionKind.Publish, plays: new[] {
+            new PlayDto(new[] { C(4), D(4), S(4) }, table[0].Id),
+            new PlayDto(run.Append(H(4)).ToArray(), table[1].Id) });
+        Check(extend.Session.ViewFor(1).Melds[1].Cards.SequenceEqual(new[] { H(1), H(2), H(3), H(4) }),
+            "Traslado de una cuarta deja tercia y continua una escalera propia.");
+
+        int[] fives = { D(5), C(5), H(5) };
+        var win = new Fixture(new[] { Array.Empty<int>(), source.Concat(fives).Concat(new[] { C(1), S(5) }).ToArray() },
+            new[] { H(1) }, ready: true);
+        win.Send(2, ActionKind.Publish, plays: new[] { Play(source), Play(fives) });
+        table = win.Session.ViewFor(2).Melds;
+        win.Send(1, ActionKind.DrawDeck);
+        win.Send(2, ActionKind.Claim, plays: new[] {
+            new PlayDto(new[] { D(2), D(3), D(4) }, table[0].Id), Play(D(1), C(1), H(1)),
+            new PlayDto(fives.Append(S(5)).ToArray(), table[1].Id) });
+        win.Send(1, ActionKind.Pass);
+        SnapshotDto won = win.Session.ViewFor(2);
+        Check(won.Result == MatchResult.Desmoche && won.WinnerPlayerId == 2 && won.OwnHand.Length == 0 && won.PaymentPlayerId is null,
+            "Reclamo con traslado y diez cartas combinadas gana automaticamente sin pago.");
     }
 
     private static void Pasa()

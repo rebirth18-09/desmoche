@@ -11,6 +11,7 @@ public enum GamePhase
 	AwaitingDraw, AwaitingClaims, AwaitingPayment, Finished, AwaitingOrderChallenge
 }
 public enum MatchResult { None, Desmoche, InitialVictory, Draw }
+public enum PasaReason { SetOrder, UnusedOffer }
 public readonly record struct GameActionResult(bool Success, string Message,
 	bool Penalized = false);
 public sealed record MatchView(GamePhase Phase, int? CurrentPlayerId,
@@ -18,9 +19,9 @@ public sealed record MatchView(GamePhase Phase, int? CurrentPlayerId,
 	IReadOnlyList<int> EliminatedPlayers, GameState.PlayerView Cards);
 
 // Motor local secuencial. La futura red ejecutara comandos en este mismo motor.
-public sealed class GameManager
+public sealed partial class GameManager
 {
-	private enum OfferSource { Deck, Discard }
+	private enum OfferSource { Deck, Discard, TurnDiscard }
 	private sealed record Claim(int PlayerId, IReadOnlyList<MeldPlay> Plays,
 		bool DeclareWin, InitialVictoryKind? InitialKind, bool Automatic);
 
@@ -31,6 +32,7 @@ public sealed class GameManager
 	private readonly HashSet<int> _disconnected = new();
 	private readonly Dictionary<int, Claim?> _responses = new();
 	private int _starterId;
+	private readonly int _creatorId;
 	private int _originId;
 	private OfferSource _source;
 	private bool _firstOffer;
@@ -38,8 +40,13 @@ public sealed class GameManager
 	private bool _extraDrawRequired;
 	private GamePhase _challengeResume;
 	private MatchResult? _challengeWin;
+	private readonly Queue<(int Player, int Meld)> _unusedOfferChallenges = new();
 	public int? ChallengedPlayerId { get; private set; }
+	public PasaReason ChallengeReason { get; private set; }
+	public int? ChallengedMeldId { get; private set; }
 	public long OrderChallengeId { get; private set; }
+	public IReadOnlyList<int>? FinalDeckCards => Phase == GamePhase.Finished && State is not null
+		? Array.AsReadOnly(State.RemainingDeckInDrawOrder.Select(c => c.Id).ToArray()) : null;
 	private InitialVictoryKind? _initialVictoryKind;
 	private int[] _initialVictoryCards = Array.Empty<int>();
 	public InitialVictoryKind? WinningInitialKind => Result == MatchResult.InitialVictory ? _initialVictoryKind : null;
@@ -60,6 +67,10 @@ public sealed class GameManager
 	public bool ClaimsReady => Phase == GamePhase.AwaitingClaims &&
 		_roster.All(p => !CanRespondToOffer(p.Id) || _responses.ContainsKey(p.Id));
 	public bool IsOpeningOffer => Phase == GamePhase.AwaitingClaims && _openingOffer;
+	public bool MustDrawDeck => Phase == GamePhase.AwaitingDraw && _extraDrawRequired;
+	public bool OfferIsFromDiscard => _source != OfferSource.Deck;
+	public bool CanChooseOffer(int playerId) => Phase == GamePhase.AwaitingClaims &&
+		CanRespondToOffer(playerId) && !_responses.ContainsKey(playerId);
 	public bool HasExchanged(int playerId) => _exchange.ContainsKey(playerId);
 	public bool HasFinishedInitial(int playerId) => _initialReady.Contains(playerId);
 	public bool HasAnsweredClaim(int playerId) => _responses.ContainsKey(playerId) ||
@@ -67,10 +78,23 @@ public sealed class GameManager
 	public IReadOnlyList<Player> Players =>
 		State?.Players ?? Array.AsReadOnly(_roster.ToArray());
 
-	public GameManager(int creatorId, string creatorName)
+	public MatchSettings Settings { get; private set; }
+
+	public GameManager(int creatorId, string creatorName, MatchSettings? settings = null)
 	{
+		Settings = settings ?? MatchSettings.Default;
+		Settings.Validate();
 		_roster.Add(new Player(creatorId, creatorName, 0));
+		_creatorId = creatorId;
 		_starterId = creatorId;
+	}
+
+	public GameActionResult ConfigureSettings(MatchSettings settings)
+	{
+		if (Phase != GamePhase.Preparing) return Fail("Los ajustes solo pueden cambiarse antes de iniciar.");
+		if (settings is null || !settings.IsValid()) return Fail("Ajustes de partida inválidos.");
+		Settings = settings;
+		return Ok("Ajustes de la partida actualizados.");
 	}
 
 	public GameActionResult AddPlayer(int id, string? name)
@@ -88,7 +112,7 @@ public sealed class GameManager
 	public GameActionResult RemovePreparingPlayer(int playerId)
 	{
 		int index = _roster.FindIndex(p => p.Id == playerId);
-		if (Phase != GamePhase.Preparing || index <= 0)
+		if (Phase != GamePhase.Preparing || index < 0 || playerId == _creatorId)
 			return Fail("Solo puede retirarse un invitado durante la preparacion.");
 		if (_starterId == playerId) _starterId = RightOf(playerId);
 		_roster.RemoveAt(index);
@@ -104,7 +128,7 @@ public sealed class GameManager
 
 	public GameActionResult DisconnectPlayer(int playerId)
 	{
-		if (!Known(playerId) || _roster[0].Id == playerId)
+		if (!Known(playerId) || playerId == _creatorId)
 			return Fail("Invitado desconocido; la salida del creador cierra la sesion.");
 		if (Phase == GamePhase.Preparing) return RemovePreparingPlayer(playerId);
 		if (!_disconnected.Add(playerId))
@@ -178,6 +202,7 @@ public sealed class GameManager
 	public GameActionResult DeclareInitialVictory(int playerId, InitialVictoryKind kind,
 		IReadOnlyList<int>? cardIds = null)
 	{
+		if (!Settings.Allows(kind)) return Fail("Esta victoria inicial está desactivada en la sala.");
 		bool beforeExchange = Phase == GamePhase.InitialExchange && !HasExchanged(playerId) &&
 			kind is InitialVictoryKind.LowStraight or InitialVictoryKind.HighStraight;
 		if ((!beforeExchange && Phase != GamePhase.InitialDeclarations) || !Eligible(playerId) ||
@@ -259,6 +284,8 @@ public sealed class GameManager
 		if (Phase != GamePhase.AwaitingClaims || !CanRespondToOffer(playerId) ||
 			_responses.ContainsKey(playerId))
 			return Fail("No puede responder a este reclamo.");
+		if (initialKind is { } requested && !Settings.Allows(requested))
+			return Fail("Esta victoria inicial está desactivada en la sala.");
 		if (initialKind is not null && (!_openingOffer ||
 			initialKind == InitialVictoryKind.Color ||
 			initialKind == InitialVictoryKind.Peladilla))
@@ -301,6 +328,19 @@ public sealed class GameManager
 				return ExecuteClaim(claim);
 		}
 
+		// Solo una oferta que nadie utiliza puede ser denunciada. Quien pierde
+		// prioridad frente a otro reclamo no esta dejando pasar una carta disponible.
+		if (_source != OfferSource.TurnDiscard)
+			foreach (int id in ClaimOrder().Where(Eligible))
+				if (AutomaticPlay(id)?.MeldId is int meldId)
+					_unusedOfferChallenges.Enqueue((id, meldId));
+		if (OpenNextUnusedOfferChallenge())
+			return Ok($"Oferta sin jugar; los demás pueden decir Pasa durante {Settings.PasaSeconds} segundos.");
+		return CompleteUnclaimedOffer();
+	}
+
+	private GameActionResult CompleteUnclaimedOffer()
+	{
 		bool extra = _openingOffer && _source == OfferSource.Deck;
 		int origin = _originId;
 		State = State!.OfferToDiscard();
@@ -429,13 +469,25 @@ public sealed class GameManager
 	{
 		if (State is null) throw new InvalidOperationException("Falta iniciar la partida.");
 		return new MatchView(Phase, CurrentPlayerId, PaymentPlayerId, WinnerPlayerId,
-			Result, EliminatedPlayers, State.CreateViewFor(playerId, WinnerPlayerId is not null));
+			Result, EliminatedPlayers, State.CreateViewFor(playerId, Phase == GamePhase.Finished));
 	}
 
-	public GameActionResult PrepareNextMatch()
+	public GameActionResult PrepareNextMatch(IReadOnlyCollection<int>? returningPlayers = null)
 	{
 		if (Phase != GamePhase.Finished) return Fail("Primero debe terminar la partida.");
-		_starterId = RightOf(_starterId);
+		if (returningPlayers is not null && (returningPlayers.Count is < 2 or > 4 ||
+			returningPlayers.Distinct().Count() != returningPlayers.Count || returningPlayers.Any(id => !Known(id))))
+			return Fail("La siguiente partida necesita de dos a cuatro participantes conocidos.");
+		int nextStarter = RightOf(_starterId);
+		if (returningPlayers is not null)
+		{
+			while (!returningPlayers.Contains(nextStarter)) nextStarter = RightOf(nextStarter);
+			Player[] returning = _roster.Where(p => returningPlayers.Contains(p.Id)).ToArray();
+			_roster.Clear();
+			for (int i = 0; i < returning.Length; i++)
+				_roster.Add(new Player(returning[i].Id, returning[i].Name, i));
+		}
+		_starterId = nextStarter;
 		State = null;
 		Phase = GamePhase.Preparing;
 		CurrentPlayerId = PaymentPlayerId = WinnerPlayerId = null;
@@ -444,6 +496,9 @@ public sealed class GameManager
 		_exchange.Clear(); _initialReady.Clear(); _eliminated.Clear(); _responses.Clear();
 		_disconnected.Clear();
 		_firstOffer = _openingOffer = _extraDrawRequired = false;
+		_discardRefusals.Clear(); _refusedDiscardId = null;
+		_unusedOfferChallenges.Clear(); ChallengedPlayerId = ChallengedMeldId = null;
+		ChallengeReason = PasaReason.SetOrder;
 		return Ok("Nueva partida preparada; inicia el siguiente a la derecha.");
 	}
 
@@ -503,7 +558,7 @@ public sealed class GameManager
 		if (Eligible(claim.PlayerId) && HasColorFault(claim.PlayerId))
 		{
 			OpenOrderChallenge(claim.PlayerId, initialValid ? MatchResult.InitialVictory : null);
-			return Ok("Juego expuesto; los demas tienen tres segundos para decir Pasa.");
+			return Ok($"Juego expuesto; los demás tienen {Settings.PasaSeconds} segundos para decir Pasa.");
 		}
 		if (claim.Automatic || _eliminated.Contains(claim.PlayerId) ||
 			_disconnected.Contains(claim.PlayerId))
@@ -569,17 +624,17 @@ public sealed class GameManager
 		if (plays is null || plays.Count == 0 || plays.Any(p => p is null))
 		{ error = "Faltan juegos."; return false; }
 		var corrected = new List<MeldPlay>();
+		IEnumerable<Card> available = state.GetPlayer(playerId).Hand.Cards;
+		foreach (int id in plays.Where(p => p.MeldId is not null).Select(p => p.MeldId!.Value).Distinct())
+		{
+			Meld? old = state.Melds.FirstOrDefault(m => m.Id == id && m.OwnerPlayerId == playerId);
+			if (old is null) { error = "Juego ajeno o inexistente."; return false; }
+			available = available.Concat(old.Cards);
+		}
+		Card[] availableCards = available.ToArray();
 		foreach (MeldPlay play in plays)
 		{
-			IEnumerable<Card> available = state.GetPlayer(playerId).Hand.Cards;
-			if (play.MeldId is int id)
-			{
-				Meld? old = state.Melds.FirstOrDefault(m => m.Id == id &&
-					m.OwnerPlayerId == playerId);
-				if (old is null) { error = "Juego ajeno o inexistente."; return false; }
-				available = available.Concat(old.Cards);
-			}
-			if (!TryCards(available, play.CardIds, out Card[] cards))
+			if (!TryCards(availableCards, play.CardIds, out Card[] cards))
 			{ error = "Cartas ajenas o duplicadas."; return false; }
 			Card[]? ordered = Ordered(cards);
 			if (ordered is null) { error = "Las cartas no forman un juego."; return false; }
@@ -634,8 +689,23 @@ public sealed class GameManager
 		_challengeResume = Phase;
 		_challengeWin = victory;
 		ChallengedPlayerId = playerId;
+		ChallengeReason = PasaReason.SetOrder;
+		ChallengedMeldId = null;
 		OrderChallengeId++;
 		Phase = GamePhase.AwaitingOrderChallenge;
+	}
+
+	private bool OpenNextUnusedOfferChallenge()
+	{
+		while (_unusedOfferChallenges.TryDequeue(out var next))
+		{
+			if (!Eligible(next.Player)) continue;
+			OpenOrderChallenge(next.Player);
+			ChallengeReason = PasaReason.UnusedOffer;
+			ChallengedMeldId = next.Meld;
+			return true;
+		}
+		return false;
 	}
 
 	public GameActionResult SayPasa(int playerId)
@@ -645,13 +715,23 @@ public sealed class GameManager
 		return ResolveOrderChallenge(true) with { Penalized = false };
 	}
 
-	// Solo la autoridad llama al vencer sus tres segundos; el motor no usa reloj ni UI.
+	// Solo la autoridad llama al vencer el plazo de Pasa; el motor no usa reloj ni UI.
 	public GameActionResult ExpireOrderChallenge() => Phase == GamePhase.AwaitingOrderChallenge
 		? ResolveOrderChallenge(false) : Fail("No hay oportunidad de Pasa.");
 
 	private GameActionResult ResolveOrderChallenge(bool caught)
 	{
 		int actor = ChallengedPlayerId!.Value;
+		if (ChallengeReason == PasaReason.UnusedOffer)
+		{
+			ChallengedPlayerId = ChallengedMeldId = null;
+			ChallengeReason = PasaReason.SetOrder;
+			Phase = _challengeResume;
+			if (caught) Eliminate(actor);
+			if (Phase != GamePhase.Finished && !OpenNextUnusedOfferChallenge()) CompleteUnclaimedOffer();
+			return Ok(caught ? "Pasa: jugador eliminado por dejar pasar una oferta que entraba en su juego."
+				: "Oferta no denunciada; el jugador continua.", caught);
+		}
 		State = State!.NormalizeSetOrder(actor);
 		ChallengedPlayerId = null;
 		Phase = _challengeResume;
@@ -677,6 +757,7 @@ public sealed class GameManager
 	private void OpenClaims(int origin, OfferSource source, bool opening)
 	{
 		_originId = origin; _source = source; _openingOffer = opening;
+		_unusedOfferChallenges.Clear();
 		_responses.Clear();
 		Phase = GamePhase.AwaitingClaims;
 		CurrentPlayerId = origin;
@@ -685,12 +766,13 @@ public sealed class GameManager
 
 	private IEnumerable<int> ClaimOrder()
 	{
-		int start = _source == OfferSource.Deck ? _originId : RightOf(_originId);
+		int start = _source is OfferSource.Deck or OfferSource.TurnDiscard ? _originId : RightOf(_originId);
 		int id = start;
 		for (int i = 0; i < _roster.Count; i++)
 		{
 			// El pagador tampoco puede recuperar su carta mediante un pago automatico.
-			if (_source != OfferSource.Discard || id != _originId) yield return id;
+			if (_source == OfferSource.TurnDiscard ? id == _originId :
+				_source != OfferSource.Discard || id != _originId) yield return id;
 			id = RightOf(id);
 		}
 	}
@@ -723,13 +805,7 @@ public sealed class GameManager
 
 	private bool CanUseDiscard(int id, Card top)
 	{
-		foreach (Meld meld in State!.Melds.Where(m => m.OwnerPlayerId == id))
-			if (Ordered(meld.Cards.Append(top).ToArray()) is not null) return true;
-		var hand = State.GetPlayer(id).Hand.Cards;
-		for (int i = 0; i < hand.Count; i++)
-			for (int j = i + 1; j < hand.Count; j++)
-				if (Ordered(new[] { hand[i], hand[j], top }) is not null) return true;
-		return false;
+		return FindCardUses(State!.OfferDiscardTop(), id, top).Count > 0;
 	}
 
 	private void Penalize(int id)
@@ -749,7 +825,8 @@ public sealed class GameManager
 	private void Finish(MatchResult result, int? winner)
 	{
 		if (State is not null && State.ExchangeCount > 0) State = State.CancelInitialExchange();
-		ChallengedPlayerId = null; _challengeWin = null;
+		ChallengedPlayerId = ChallengedMeldId = null; _challengeWin = null;
+		_unusedOfferChallenges.Clear(); ChallengeReason = PasaReason.SetOrder;
 		if (State?.OfferedCard is not null) State = State.OfferToDiscard();
 		Phase = GamePhase.Finished;
 		Result = result; WinnerPlayerId = winner;
@@ -761,7 +838,8 @@ public sealed class GameManager
 		Phase == GamePhase.AwaitingClaims || Phase == GamePhase.AwaitingPayment;
 	private bool Known(int id) => _roster.Any(p => p.Id == id);
 	private bool CanRespondToOffer(int id) => Eligible(id) &&
-		(_source != OfferSource.Discard || id != _originId);
+		(_source == OfferSource.TurnDiscard ? id == _originId :
+			_source != OfferSource.Discard || id != _originId);
 	private bool Eligible(int id) => Known(id) && !_eliminated.Contains(id) &&
 		!_disconnected.Contains(id);
 	private GameActionResult Ok(string message, bool penalized = false)

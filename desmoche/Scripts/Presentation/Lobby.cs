@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using Desmoche.Application;
+using Desmoche.Domain;
 using Desmoche.Networking;
 using Desmoche.Networking.Core;
 using Godot;
@@ -37,7 +38,11 @@ public partial class Lobby : Control
     private ItemList _players = null!;
     private OfflinePanel _panel;
     private ConnectionState _lastState = ConnectionState.Offline;
-    private long _pendingStart;
+    private long _pendingStart, _pendingSettings;
+    private MatchSettings _settings = MatchSettings.Default;
+    private MatchSettingsPanel _settingsPanel = null!;
+    private Button _createSettings = null!, _roomSettings = null!;
+    private readonly Label _createSettingsSummary = new(), _roomSettingsSummary = new();
     private bool _ready;
     private bool _leaving;
     private string _roomCode = "";
@@ -80,6 +85,11 @@ public partial class Lobby : Control
         _players = GetNode<ItemList>(ContentPath + "SessionPanel/PlayersList");
         _waiting = GetNode<Label>(ContentPath + "SessionPanel/WaitingLabel");
         _message = GetNode<Label>(ContentPath + "MessageLabel");
+        _createSettings = MatchSettingsPanel.AddAccess((VBoxContainer)_createPanel, _createSettingsSummary, 1);
+        _roomSettings = MatchSettingsPanel.AddAccess((VBoxContainer)_sessionPanel, _roomSettingsSummary, 0);
+        _settingsPanel = new MatchSettingsPanel(); AddChild(_settingsPanel);
+        _createSettings.Pressed += OpenCreateSettings;
+        _roomSettings.Pressed += OpenRoomSettings;
         _createName.MaxLength = NetworkProtocol.MaxNameLength;
         _joinName.MaxLength = NetworkProtocol.MaxNameLength;
         _ip.MaxLength = 12;
@@ -125,6 +135,7 @@ public partial class Lobby : Control
         }
         _network = null;
         _pendingStart = 0;
+        _pendingSettings = 0;
         _lastState = ConnectionState.Offline;
         _roomCode = "";
     }
@@ -133,6 +144,8 @@ public partial class Lobby : Control
     {
         Unbind();
         if (!_ready) return;
+        _createSettings.Pressed -= OpenCreateSettings;
+        _roomSettings.Pressed -= OpenRoomSettings;
         _createOption.Pressed -= ShowCreate;
         _joinOption.Pressed -= ShowJoin;
         _back.Pressed -= RequestBack;
@@ -230,6 +243,7 @@ public partial class Lobby : Control
         if (state == ConnectionState.Offline)
         {
             _pendingStart = 0;
+            _pendingSettings = 0;
             _roomCode = "";
             _panel = wasConnecting && !_leaving ? OfflinePanel.Join : OfflinePanel.Options;
             ShowMessage(message, !_leaving && wasConnecting);
@@ -245,8 +259,15 @@ public partial class Lobby : Control
 
     private void OnActionCompleted(ReplyDto reply)
     {
+        if (reply.RequestId == _pendingSettings && _pendingSettings != 0)
+        {
+            _pendingSettings = 0;
+            if (reply.Success && _network?.View is { } view) _settings = view.Settings ?? MatchSettings.Default;
+            ShowMessage(reply.Message, !reply.Success); Render(); return;
+        }
         if (reply.RequestId != _pendingStart || _pendingStart == 0) return;
         _pendingStart = 0;
+        _pendingSettings = 0;
         ShowMessage(reply.Success ? "Partida iniciada." : reply.Message, !reply.Success);
         Render();
     }
@@ -267,11 +288,26 @@ public partial class Lobby : Control
         return false;
     }
 
+    private void OpenCreateSettings() => _settingsPanel.Open(_settings, true, _createSettings, settings =>
+    { _settings = settings; Render(); });
+
+    private void OpenRoomSettings()
+    {
+        if (_network?.View is not { } view || _pendingSettings != 0) return;
+        bool editable = _network.IsHost && view.Phase == GamePhase.Preparing;
+        _settingsPanel.Open(view.Settings ?? MatchSettings.Default, editable, _roomSettings, settings =>
+        {
+            _pendingSettings = _network.UpdateMatchSettings(settings);
+            ShowMessage(_pendingSettings == 0 ? "No se pudieron actualizar los ajustes." : "Aplicando ajustes a la sala…", _pendingSettings == 0);
+            Render();
+        });
+    }
+
     private void CreateRoom()
     {
         if (_panel != OfflinePanel.Create || !CanConnect() || !ReadName(_createName, out string name)) return;
         ShowMessage("");
-        Error error = _network!.Host(name);
+        Error error = _network!.Host(name, settings: _settings);
         if (error != Error.Ok) ShowConnectionError(error, true);
         Render();
     }
@@ -356,7 +392,16 @@ public partial class Lobby : Control
         int count = view?.Players.Count(p => p.Connected) ?? 0;
         _start.Visible = host;
         _start.Disabled = !host || view?.Phase != GamePhase.Preparing ||
-            count is < 2 or > 4 || _pendingStart != 0;
+            count is < 2 or > 4 || _pendingStart != 0 || _pendingSettings != 0;
+        _createSettingsSummary.Text = MatchSettingsPanel.Summary(_settings);
+        _roomSettingsSummary.Text = MatchSettingsPanel.Summary(view?.Settings ?? MatchSettings.Default);
+        _roomSettings.GetParent<Control>().Visible = !connecting;
+        _roomSettings.Disabled = view is null || _pendingStart != 0 || _pendingSettings != 0;
+        if (_settingsPanel.Visible)
+        {
+            if (!(offline && _panel == OfflinePanel.Create) && (view is null || view.Phase != GamePhase.Preparing)) _settingsPanel.Close();
+            else _settingsPanel.RefreshReadOnly(view?.Settings ?? _settings);
+        }
         _start.Text = _pendingStart != 0 ? "Iniciando…" : "Iniciar partida";
         _status.Text = _network?.Status ?? "Sin conexión.";
         _addresses.Visible = !connecting;

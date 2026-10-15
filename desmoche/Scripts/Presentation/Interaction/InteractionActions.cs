@@ -17,7 +17,12 @@ public static class InteractionActions
     // validacion final, incluyendo restricciones que no publica en el DTO.
     public static bool CanRequest(SnapshotDto? view, ActionKind kind)
     {
-        if (view is null || !view.Players.Any(player => player.Id == view.RecipientId &&
+        if (view is null) return false;
+        if (kind == ActionKind.JoinRematch) return view.Phase == GamePhase.Finished &&
+            view.Rematch is { Closed: false, RemainingMilliseconds: > 0 } rematch &&
+            rematch.EligiblePlayerIds.Contains(view.RecipientId) && !rematch.ReadyPlayerIds.Contains(view.RecipientId) &&
+            view.Players.Any(p => p.Id == view.RecipientId && p.Connected);
+        if (!view.Players.Any(player => player.Id == view.RecipientId &&
                 player.Connected && !player.Eliminated)) return false;
         bool ownTurn = view.CurrentPlayerId == view.RecipientId;
         bool ownPayment = view.Phase == GamePhase.AwaitingPayment &&
@@ -34,9 +39,16 @@ public static class InteractionActions
             ActionKind.DrawDeck => view.Phase == GamePhase.AwaitingDraw && ownTurn &&
                 view.DeckCount > 0,
             ActionKind.DrawDiscard => view.Phase == GamePhase.AwaitingDraw && ownTurn &&
-                view.DiscardTop is not null,
+                !view.MustDrawDeck && view.DiscardTop is not null && view.DiscardTiming is null,
+            ActionKind.ChooseDiscard => view.Phase == GamePhase.AwaitingDraw && ownTurn &&
+                view.DiscardTiming is { RemainingMilliseconds: > 0 },
+            ActionKind.ChooseOffer => view.Phase == GamePhase.AwaitingClaims && !view.OwnResponseSubmitted &&
+                view.OfferTiming is { RemainingSelectionMilliseconds: > 0 } offer &&
+                !offer.Reservations.Any(r => r.PlayerId == view.RecipientId),
             ActionKind.Claim => view.Phase == GamePhase.AwaitingClaims &&
-                !view.OwnResponseSubmitted && view.OfferedCard is not null,
+                !view.OwnResponseSubmitted && view.OfferedCard is not null &&
+                (view.OfferTiming is null || view.OfferTiming.Reservations.Any(r =>
+                    r.PlayerId == view.RecipientId && r.RemainingMilliseconds > 0)),
             ActionKind.Pass => view.Phase == GamePhase.AwaitingClaims &&
                 !view.OwnResponseSubmitted,
             // Bajar juegos no esta limitado al turno propio por las reglas acordadas.
@@ -103,21 +115,19 @@ public static class InteractionActions
         int[] all = plays.SelectMany(play => play.Cards).ToArray();
         if (all.Length > 52 || all.Distinct().Count() != all.Length) return false;
         var targets = new System.Collections.Generic.HashSet<int>();
+        var published = new System.Collections.Generic.HashSet<int>();
+        foreach (PlayDto play in plays.Where(p => p.MeldId is not null))
+        {
+            MeldDto? meld = view.Melds.FirstOrDefault(m => m.Id == play.MeldId && m.OwnerId == view.RecipientId);
+            if (meld is null || !targets.Add(meld.Id) || meld.Cards.Any(id => !all.Contains(id))) return false;
+            published.UnionWith(meld.Cards);
+        }
         foreach (PlayDto play in plays)
         {
             if (play.Cards.Length is < 3 or > 13 ||
                 play.Cards.Any(id => id is < 0 or > 51)) return false;
-            int[] old = Array.Empty<int>();
-            if (play.MeldId is int target)
-            {
-                MeldDto? meld = view.Melds.FirstOrDefault(candidate =>
-                    candidate.Id == target && candidate.OwnerId == view.RecipientId);
-                if (meld is null || !targets.Add(target) ||
-                    meld.Cards.Any(id => !play.Cards.Contains(id))) return false;
-                old = meld.Cards;
-            }
             if (play.Cards.Any(id => !view.OwnHand.Contains(id) &&
-                    !old.Contains(id) && source != id)) return false;
+                    !published.Contains(id) && source != id)) return false;
         }
         message = "";
         return true;

@@ -43,7 +43,8 @@ public partial class Main : Control
 
     public override void _Ready()
     {
-        GetWindow().MinSize = new Vector2I(640, 480);
+        GetWindow().MinSize = new Vector2I(640, 360);
+        InitializeResponsiveWindow();
         _network = GetNode<NetworkManager>("NetworkManager");
         _local = GetNode<LocalGameSession>("LocalGameSession");
         _screens = GetNode<Control>("Margin/Screens");
@@ -68,6 +69,7 @@ public partial class Main : Control
 
     public override void _Process(double delta)
     {
+        UpdateMobileInsets(delta);
         if (ScreensReady || _failed) return;
         if (!_requested) { BeginLoading(); return; }
         if (Time.GetTicksMsec() - _loadingStarted > 60000)
@@ -296,6 +298,7 @@ public partial class Main : Control
 
     public override void _ExitTree()
     {
+        GetViewport().SizeChanged -= UpdateSafeMargins;
         if (!_bound) return;
         _network.ViewChanged -= OnViewChanged;
         _network.ConnectionChanged -= OnConnectionChanged;

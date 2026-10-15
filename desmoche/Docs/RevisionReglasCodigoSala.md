@@ -1,5 +1,7 @@
 > Revisión posterior 12/10/2026: [VictoriasVisiblesYPagos.md](VictoriasVisiblesYPagos.md) actualiza el plazo y ubicación de Pasa, muestra la evidencia de victoria y excluye al pagador de su oferta. Protocolo actual: 4.
 
+> Corrección posterior de Peladilla: [Peladilla.md](Peladilla.md) sustituye únicamente las referencias de este documento a ganar con parejas o proyectos. La regla actual excluye también los juegos que se completarían con una carta más; el botón sigue dependiendo de los juegos visibles.
+
 # Revisión de reglas, intercambio y código de sala — 12 de octubre de 2026
 
 Este documento reemplaza las reglas anteriores que exigían cinco cartas en las escaleras iniciales, declaración manual de victoria normal o una posible carta futura para excluir Peladilla. Conserva los diseños de menú aportados por el usuario. No introduce una fase posterior.

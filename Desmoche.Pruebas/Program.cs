@@ -3,6 +3,9 @@ using Desmoche.Domain;
 try
 {
 RuleRevisionTests.Run();
+TimedMatchTests.Run();
+MatchSettingsTests.Run();
+FinalDeckAndMandatoryOfferTests.Run();
 RulesTests.Run();
 GameManagerTests.Run();
 ConnectionLifecycleTests.Run();

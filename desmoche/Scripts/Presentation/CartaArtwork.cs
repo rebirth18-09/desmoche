@@ -102,10 +102,21 @@ public partial class CartaArtwork : Control
         }
         if (suit == Suit.Clubs)
         {
-            DrawCircle(center + new Vector2(0, -r * 0.42f), r * 0.51f, ink, antialiased: true);
-            DrawCircle(center + new Vector2(-r * 0.45f, r * 0.12f), r * 0.51f, ink, antialiased: true);
-            DrawCircle(center + new Vector2(r * 0.45f, r * 0.12f), r * 0.51f, ink, antialiased: true);
-            DrawStem(center, r, ink);
+            // Tres hojas redondas con entrantes visibles y tallo estrecho.
+            // El tallo de la pica, mas ancho, no invade la silueta del trebol.
+            DrawColoredPolygon(new[] {
+                center + new Vector2(-r * 0.10f, -r * 0.25f),
+                center + new Vector2(r * 0.10f, -r * 0.25f),
+                center + new Vector2(r * 0.09f, r * 0.66f),
+                center + new Vector2(r * 0.19f, r * 0.86f),
+                center + new Vector2(r * 0.29f, r * 0.95f),
+                center + new Vector2(-r * 0.29f, r * 0.95f),
+                center + new Vector2(-r * 0.19f, r * 0.86f),
+                center + new Vector2(-r * 0.09f, r * 0.66f) }, ink);
+            DrawCircle(center + new Vector2(0, r * 0.12f), r * 0.28f, ink, antialiased: true);
+            DrawCircle(center + new Vector2(0, -r * 0.56f), r * 0.42f, ink, antialiased: true);
+            DrawCircle(center + new Vector2(-r * 0.55f, r * 0.09f), r * 0.42f, ink, antialiased: true);
+            DrawCircle(center + new Vector2(r * 0.55f, r * 0.09f), r * 0.42f, ink, antialiased: true);
             return;
         }
         var points = new Vector2[48];

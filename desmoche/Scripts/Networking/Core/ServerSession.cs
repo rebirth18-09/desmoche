@@ -7,7 +7,7 @@ using Desmoche.Domain;
 namespace Desmoche.Networking.Core;
 
 // Autoridad del host o de una partida local. No expone el motor ni el estado completo.
-public sealed class ServerSession
+public sealed partial class ServerSession
 {
     private sealed class Connection
     {
@@ -22,7 +22,7 @@ public sealed class ServerSession
     private readonly Dictionary<long, Connection> _connections = new();
     private readonly HashSet<int> _departed = new();
     private int _nextPlayerId = 2;
-    private long _nowMilliseconds, _challengeDeadline, _timedChallengeId;
+    private long _nowMilliseconds, _challengeDeadline, _timedChallengeId, _windowChallengeId;
     public const int PasaDurationMilliseconds = 3000;
     public string SessionId { get; } = Guid.NewGuid().ToString("N");
     public long Revision { get; private set; } = 1;
@@ -30,11 +30,14 @@ public sealed class ServerSession
     public bool AcceptingPlayers => _game.Phase == GamePhase.Preparing;
     public IReadOnlyList<long> Peers => Array.AsReadOnly(_connections.Keys.OrderBy(x => x).ToArray());
 
-    public ServerSession(string hostName, Func<Deck>? deckFactory = null)
+    public ServerSession(string hostName, Func<Deck>? deckFactory = null,
+        bool multiplayerRematch = false, Random? automaticRandom = null, MatchSettings? settings = null)
     {
         if (!NetworkProtocol.ValidName(hostName)) throw new ArgumentException("Nombre invalido.");
-        _game = new GameManager(1, hostName.Trim());
+        _game = new GameManager(1, hostName.Trim(), settings);
         _deckFactory = deckFactory;
+        _multiplayerRematch = multiplayerRematch;
+        _automaticRandom = automaticRandom ?? new Random();
         _connections.Add(1, new Connection(1));
     }
     public bool Join(long peer, int version, string name, out string error)
@@ -68,6 +71,9 @@ public sealed class ServerSession
             ResolveWhenReady();
         }
         Updated(before);
+        _reservations.Remove(connection.PlayerId);
+        _rematchEligible.Remove(connection.PlayerId);
+        _rematchReady.Remove(connection.PlayerId);
     }
 
     // sender procede de GetRemoteSenderId; jamas del contenido enviado.
@@ -89,15 +95,20 @@ public sealed class ServerSession
         // Consumir tambien los identificadores de acciones rechazadas.
         connection.LastRequest = c.RequestId;
         if (c.Window != Window) return Reject(c.RequestId, "La oportunidad de actuar ya cambio.");
-        if (c.Kind is ActionKind.StartMatch or ActionKind.PrepareNextMatch && sender != 1)
-            return Reject(c.RequestId, "Solo el host puede preparar o iniciar.");
+        if (c.Kind is ActionKind.StartMatch or ActionKind.PrepareNextMatch or ActionKind.UpdateSettings && sender != 1)
+            return Reject(c.RequestId, "Solo el host puede ajustar, preparar o iniciar la partida.");
 
         int actor = connection.PlayerId;
+        if (_multiplayerRematch && c.Kind == ActionKind.PrepareNextMatch)
+            return Reject(c.RequestId, "Cada jugador debe apuntarse a la revancha; se inicia al terminar el plazo.");
+        if (!CanActBeforeDeadline(actor, c.Kind))
+            return Reject(c.RequestId, "El plazo para elegir esta carta ya termino.");
         MeldPlay[] plays = c.Plays?.Select(p => new MeldPlay(p.Cards, p.MeldId)).ToArray()
             ?? Array.Empty<MeldPlay>();
         var before = Context();
         GameActionResult result = c.Kind switch
         {
+            ActionKind.UpdateSettings => _game.ConfigureSettings(c.Settings!),
             ActionKind.StartMatch => _game.StartMatch(_deckFactory?.Invoke()),
             ActionKind.ExchangeCard => _game.SelectExchangeCard(actor, c.CardId!.Value),
             ActionKind.FinishInitial => _game.FinishInitialDeclarations(actor),
@@ -106,6 +117,9 @@ public sealed class ServerSession
             ActionKind.DrawDiscard => _game.DrawFromDiscard(actor, plays, c.DeclareWin),
             ActionKind.Claim => _game.SubmitClaim(actor, plays, c.DeclareWin, c.InitialKind),
             ActionKind.Pass => _game.PassClaim(actor),
+            ActionKind.ChooseOffer => ChooseOffer(actor),
+            ActionKind.ChooseDiscard => ChooseDiscard(actor),
+            ActionKind.JoinRematch => JoinRematch(actor),
             ActionKind.SayPasa => _game.SayPasa(actor),
             ActionKind.Publish => _game.PublishMelds(actor, plays),
             ActionKind.Transfer => _game.TransferMeldCard(actor, c.SourceMeldId!.Value, c.CardId!.Value, plays[0]),
@@ -125,9 +139,13 @@ public sealed class ServerSession
     public bool Tick(long monotonicMilliseconds)
     {
         _nowMilliseconds = Math.Max(_nowMilliseconds, Math.Max(0, monotonicMilliseconds));
-        if (_game.Phase != GamePhase.AwaitingOrderChallenge || _nowMilliseconds < _challengeDeadline) return false;
         var before = Context();
-        _game.ExpireOrderChallenge();
+        bool changed = TickCardTimers();
+        if (_game.Phase == GamePhase.AwaitingOrderChallenge && _timedChallengeId == _game.OrderChallengeId &&
+            _nowMilliseconds >= _challengeDeadline)
+        { _game.ExpireOrderChallenge(); changed = true; }
+        changed |= TickRematch();
+        if (!changed) return false;
         ResolveWhenReady();
         Updated(before);
         return true;
@@ -150,6 +168,9 @@ public sealed class ServerSession
     }
     private void ResolveWhenReady()
     {
+        if (_game.Phase == GamePhase.AwaitingClaims && _selectionClosed)
+            foreach (int actor in _game.Players.Select(p => p.Id).Where(_game.CanChooseOffer))
+                if (!_reservations.ContainsKey(actor)) _game.PassClaim(actor);
         // Resolver una ventana como maximo: una cadena de pagos abre otra ventana.
         if (_game.ClaimsReady) _game.ResolveClaims();
     }
@@ -158,12 +179,15 @@ public sealed class ServerSession
     private void Updated((GamePhase Phase, int? Current, int? Payment, int? Offer) before)
     {
         Revision++;
+        UpdateTimers(before);
         if (_game.Phase == GamePhase.AwaitingOrderChallenge && _timedChallengeId != _game.OrderChallengeId)
         {
             _timedChallengeId = _game.OrderChallengeId;
-            _challengeDeadline = _nowMilliseconds + PasaDurationMilliseconds;
+            _challengeDeadline = _nowMilliseconds + _game.Settings.PasaSeconds * 1000;
         }
-        if (before != Context()) Window++;
+        if (before != Context() || _game.Phase == GamePhase.AwaitingOrderChallenge &&
+            _game.OrderChallengeId != _windowChallengeId) Window++;
+        _windowChallengeId = _game.OrderChallengeId;
     }
     private ReplyDto Reject(long request, string error) => new(request, false, error, false, Revision);
 
@@ -172,20 +196,22 @@ public sealed class ServerSession
         if (!_connections.TryGetValue(peer, out Connection? connection))
             throw new ArgumentException("Conexion no admitida.");
         int recipient = connection.PlayerId;
-        GameState.PlayerView? view = _game.State?.CreateViewFor(recipient, _game.WinnerPlayerId is not null);
+        bool spectating = !_game.Players.Any(p => p.Id == recipient);
+        GameState.PlayerView? view = _game.State?.CreateViewFor(spectating ? _game.Players[0].Id : recipient,
+            _game.Phase == GamePhase.Finished);
         var connected = _connections.Values.Select(c => c.PlayerId).ToHashSet();
         bool submitted = _game.Phase switch
         {
             GamePhase.InitialExchange => _game.HasExchanged(recipient),
             GamePhase.InitialDeclarations => _game.HasFinishedInitial(recipient),
-            GamePhase.AwaitingClaims => _game.HasAnsweredClaim(recipient),
+            GamePhase.AwaitingClaims => !_game.CanChooseOffer(recipient),
             _ => false
         };
         return new SnapshotDto(NetworkProtocol.Version, SessionId, Revision, Window, recipient,
             _game.Phase, _game.Result, _game.CurrentPlayerId, _game.PaymentPlayerId, _game.WinnerPlayerId,
             _game.Players.Select(p => new PublicPlayerDto(p.Id, p.Name, p.SeatIndex,
                 p.Hand.Count, connected.Contains(p.Id), _game.EliminatedPlayers.Contains(p.Id))).ToArray(),
-            view?.OwnHand.Select(c => c.Id).ToArray() ?? Array.Empty<int>(),
+            spectating ? Array.Empty<int>() : view?.OwnHand.Select(c => c.Id).ToArray() ?? Array.Empty<int>(),
             view?.Melds.Select(m => new MeldDto(m.Id, m.OwnerPlayerId,
                 m.Cards.Select(c => c.Id).ToArray())).ToArray() ?? Array.Empty<MeldDto>(),
             view?.DeckCount ?? 0, view?.DiscardCount ?? 0, view?.DiscardTop?.Id, view?.OfferedCard?.Id,
@@ -193,9 +219,11 @@ public sealed class ServerSession
                 h.Cards.Select(c => c.Id).ToArray())).ToArray() ?? Array.Empty<RevealedHandDto>(), submitted,
             _game.State?.ExchangeCount ?? 0,
             _game.ChallengedPlayerId is int challenged ? new OrderChallengeDto(challenged,
-                _game.OrderChallengeId, (int)Math.Clamp(_challengeDeadline - _nowMilliseconds, 0, PasaDurationMilliseconds)) : null,
+                _game.OrderChallengeId, (int)Math.Clamp(_challengeDeadline - _nowMilliseconds, 0, _game.Settings.PasaSeconds * 1000),
+                _game.ChallengeReason, _game.ChallengedMeldId) : null,
             _game.IsOpeningOffer,
             _game.WinningInitialKind is InitialVictoryKind initialKind
-                ? new InitialVictoryDto(initialKind, _game.WinningInitialCards.ToArray()) : null);
+                ? new InitialVictoryDto(initialKind, _game.WinningInitialCards.ToArray()) : null,
+            OfferTiming(), DiscardTiming(), Rematch(), spectating, _game.MustDrawDeck, _game.FinalDeckCards?.ToArray(), _game.Settings);
     }
 }

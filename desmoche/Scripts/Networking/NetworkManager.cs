@@ -1,4 +1,5 @@
 using System;
+using Desmoche.Application;
 using System.Collections.Generic;
 using System.Linq;
 using Desmoche.Domain;
@@ -67,10 +68,11 @@ public partial class NetworkManager : Node, IGameSession
         Multiplayer.ServerDisconnected += OnServerDisconnected;
         _ready = true;
     }
-    public Error Host(string name, int port = NetworkProtocol.Port)
+    public Error Host(string name, int port = NetworkProtocol.Port, MatchSettings? settings = null)
     {
         if (!_ready || State != ConnectionState.Offline) return Error.AlreadyInUse;
-        if (!NetworkProtocol.ValidName(name) || port is < 1 or > 65535) return Error.InvalidParameter;
+        if (!NetworkProtocol.ValidName(name) || port is < 1 or > 65535 ||
+            settings is not null && !settings.IsValid()) return Error.InvalidParameter;
         ConfigureApi();
         var peer = new ENetMultiplayerPeer();
         Error error = peer.CreateServer(port, 3);
@@ -80,7 +82,7 @@ public partial class NetworkManager : Node, IGameSession
         error = discovery.Advertise(roomCode, port);
         if (error != Error.Ok) { discovery.Dispose(); peer.Close(); peer.Dispose(); return error; }
         _discovery = discovery; RoomCode = roomCode;
-        _server = new ServerSession(name);
+        _server = new ServerSession(name, multiplayerRematch: true, settings: settings);
         _acceptedSession = _server.SessionId;
         _assembler.Start(_acceptedSession, 1);
         _peer = peer;
@@ -126,13 +128,22 @@ public partial class NetworkManager : Node, IGameSession
     }
     public long Submit(ActionKind kind, int? cardId = null, PlayDto[]? plays = null,
         bool declareWin = false, InitialVictoryKind? initialKind = null,
-        int[]? cards = null, int? sourceMeldId = null)
+        int[]? cards = null, int? sourceMeldId = null) =>
+        SubmitCommand(kind, cardId, plays, declareWin, initialKind, cards, sourceMeldId);
+
+    public long UpdateMatchSettings(MatchSettings settings) =>
+        IsHost && View?.Phase == GamePhase.Preparing && settings.IsValid()
+            ? SubmitCommand(ActionKind.UpdateSettings, settings: settings) : 0;
+
+    private long SubmitCommand(ActionKind kind, int? cardId = null, PlayDto[]? plays = null,
+        bool declareWin = false, InitialVictoryKind? initialKind = null,
+        int[]? cards = null, int? sourceMeldId = null, MatchSettings? settings = null)
     {
         if (View is null || State is not (ConnectionState.Hosting or ConnectionState.Connected) ||
             IsHost && _localCommands.Count >= 32) return 0;
         var command = new CommandDto(NetworkProtocol.Version, View.Session,
             ++_nextRequest, View.Window, kind, cardId, sourceMeldId,
-            initialKind, declareWin, cards, plays);
+            initialKind, declareWin, cards, plays, settings);
         string json = NetworkProtocol.Encode(command);
         if (IsHost) _localCommands.Enqueue((json, View.Window));
         else RpcId(1, MethodName.RequestAction, json);
@@ -285,6 +296,12 @@ public partial class NetworkManager : Node, IGameSession
     {
         ServerSession? session = _server;
         if (session is null || !IsHost) return;
+        foreach (var removed in session.TakeRemovedPeers())
+        {
+            _replica?.SetPeerVisible((int)removed.Peer, false);
+            RpcId(removed.Peer, MethodName.RematchExcluded, removed.Reason);
+            _closing[removed.Peer] = Time.GetTicksMsec() + 500;
+        }
         ((SceneMultiplayer)Multiplayer).RefuseNewConnections = !session.AcceptingPlayers;
         var views = session.Peers.Select(peer => (Peer: peer, View: session.ViewFor(peer))).ToArray();
         PublicSnapshotDto publicState = StateProjection.Public(views.Single(x => x.Peer == 1).View);
@@ -368,6 +385,13 @@ public partial class NetworkManager : Node, IGameSession
         { DeferClose("Vista privada incompatible."); return; }
         if (_acceptedSession.Length == 0) { _earlyPrivate = state; return; }
         ApplyPrivate(state);
+    }
+    [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false,
+        TransferMode = MultiplayerPeer.TransferModeEnum.Reliable, TransferChannel = 0)]
+    private void RematchExcluded(string reason)
+    {
+        if (Multiplayer.GetRemoteSenderId() == 1 && State == ConnectionState.Connected)
+            DeferClose(reason);
     }
     [Rpc(MultiplayerApi.RpcMode.Authority, CallLocal = false,
         TransferMode = MultiplayerPeer.TransferModeEnum.Reliable, TransferChannel = 0)]

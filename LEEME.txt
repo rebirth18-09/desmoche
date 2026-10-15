@@ -1,0 +1,18 @@
+ACTUALIZACIÓN ACUMULATIVA — AJUSTES DE PARTIDA
+
+1. Extrae este ZIP y copia su carpeta desmoche sobre la carpeta desmoche de tu proyecto, reemplazando los archivos incluidos.
+2. Abre project.godot con Godot 4.7.2 .NET, permite la importación y recompila antes de jugar.
+3. Las carpetas Desmoche.Pruebas, Desmoche.Interaccion.Pruebas y Desmoche.Singleplayer.Pruebas son pruebas opcionales para ti: van junto a desmoche, nunca dentro de ella.
+4. Todos los participantes multijugador necesitan esta actualización: protocolo 8.
+
+NUEVO
+- Engranaje Ajustes en Jugar contra bots, Crear partida y la sala multijugador.
+- Tiempos de elección (1–120 s), preparación (5–300 s), Pasa (1–30 s) y revancha LAN (5–120 s).
+- Interruptores separados para Desmoche inicial A–2–3–4, J–Q–K–A y cuarta, además de Color y Peladilla.
+- Solo el creador configura antes de iniciar; invitados consultan. Bots, autoridad y círculos respetan las opciones. La revancha las conserva.
+- Cancelar/Escape descarta el borrador; Restablecer recupera 5/20/3/15 segundos y todas las victorias activas.
+- La victoria habitual con diez cartas combinadas sigue activa. El ajuste de revancha es de multijugador; con bots sigue siendo inmediata.
+
+Conserva los cambios de las entregas anteriores, incluida la última de burbujas y acciones en mesa. No es necesario instalar cada ZIP anterior de nuevo. Los archivos originales que no están aquí permanecen en tu proyecto.
+
+Detalle: desmoche/Docs/AjustesDePartida.md y VERIFICACION.md.

@@ -31,7 +31,9 @@ public partial class LocalGameSession : Node, IGameSession
     public void Start(LocalMatchOptions options, int? seed = null)
     {
         if (IsActive) throw new InvalidOperationException("Ya hay una partida local en curso.");
-        var controller = new LocalMatchController(options, seed);
+        // La primera decision de los bots espera a que el humano vea el reparto.
+        // Las decisiones posteriores conservan su intervalo habitual.
+        var controller = new LocalMatchController(options, seed, initialBotDelayMilliseconds: 4000);
         _commands.Clear();
         _restartRequested = false;
         _controller = controller;

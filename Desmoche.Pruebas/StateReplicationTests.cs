@@ -51,7 +51,8 @@ public static class StateReplicationTests
             Phase = GamePhase.Finished, Result = MatchResult.InitialVictory, WinnerPlayerId = 1,
             InitialVictory = new InitialVictoryDto(InitialVictoryKind.Color, v.OwnHand.ToArray()),
             RevealedHands = new[] { new RevealedHandDto(1, v.OwnHand.ToArray()),
-                new RevealedHandDto(2, Enumerable.Range(26, 9).ToArray()) }
+                new RevealedHandDto(2, Enumerable.Range(26, 9).ToArray()) },
+            FinalDeck = Enumerable.Range(0, 52).Except(v.OwnHand).Except(Enumerable.Range(26, 9)).Reverse().ToArray()
         };
     }
 
@@ -67,7 +68,7 @@ public static class StateReplicationTests
         string[] expected = { "Version", "Session", "Revision", "Window", "Phase", "Result",
             "CurrentPlayerId", "PaymentPlayerId", "WinnerPlayerId", "Players", "Melds",
             "DeckCount", "DiscardCount", "DiscardTop", "OfferedCard", "RevealedHands",
-            "ExchangeCount", "OrderChallenge", "OpeningOffer", "InitialVictory" };
+            "ExchangeCount", "OrderChallenge", "OpeningOffer", "InitialVictory", "OfferTiming", "DiscardTiming", "Rematch", "MustDrawDeck", "FinalDeck", "Settings" };
         Check(doc.RootElement.EnumerateObject().Select(x => x.Name).OrderBy(x => x)
             .SequenceEqual(expected.OrderBy(x => x)), "Contrato publico con lista exacta de campos.");
         Check(!json.Contains("OwnHand") && !json.Contains("RecipientId") &&
@@ -85,7 +86,7 @@ public static class StateReplicationTests
         using JsonDocument priv = JsonDocument.Parse(secret);
         Check(priv.RootElement.EnumerateObject().Select(x => x.Name).OrderBy(x => x)
             .SequenceEqual(new[] { "Version", "Session", "Revision", "RecipientId", "OwnHand",
-                "OwnResponseSubmitted" }.OrderBy(x => x)), "Canal privado limitado a su destinatario.");
+                "OwnResponseSubmitted", "OwnSpectating" }.OrderBy(x => x)), "Canal privado limitado a su destinatario.");
         Check(!secret.Contains("DeckCount") && !secret.Contains("Players") &&
             !secret.Contains("Melds"), "El RPC privado no duplica el estado publico.");
         Check(NetworkProtocol.TryDecode<PublicSnapshotDto>(json, 32768, out var roundtrip) &&

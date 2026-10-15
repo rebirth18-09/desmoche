@@ -4,6 +4,8 @@ using System.Linq;
 using Desmoche.Application;
 using Desmoche.Networking.Core;
 using Desmoche.Presentation;
+using Desmoche.Sessions;
+using Desmoche.Domain;
 using Godot;
 
 namespace Desmoche.Diagnostics;
@@ -47,6 +49,8 @@ public partial class MesaInteractionSmoke : Main
         {
             CheckInputAndDrafts();
             CheckExternalAndContexts();
+            CheckPublishedTransfers();
+            CheckCountdownControls();
             CheckOfflineAndPrivacy();
             Finish(true, "Gestos locales, borradores y proteccion del estado comprobados.");
         }
@@ -297,6 +301,111 @@ public partial class MesaInteractionSmoke : Main
     private static SnapshotDto Claims() => Fixture() with
         { Phase = GamePhase.AwaitingClaims, OfferedCard = 5, DeckCount = 39 };
 
+    private void CheckCountdownControls()
+    {
+        var session = new CountdownPreviewSession(Claims() with {
+            OfferTiming = new OfferTimingDto(5, 5000, Array.Empty<CardReservationDto>(), false) });
+        _mesa.Bind(session); _shown = session.View;
+        Button Choose() => _mesa.GetNode<Button>(Mesa.ContextActionsPath + "ChooseOfferButton");
+        Button Claim() => _mesa.GetNode<Button>(Mesa.ContextActionsPath + "ClaimButton");
+        Label Timer() => _mesa.GetNode<Label>(Mesa.TableStatusPath + "/CardCountdownLabel");
+        Check(Choose().Visible && !Choose().Disabled && !Claim().Visible && Timer().Text.Contains("5 s"),
+            "La mesa muestra cinco segundos y permite elegir antes de confirmar un juego.");
+        KeySelect(2); KeySelect(3); KeySelect(4); PressLocal("PrepareButton");
+        _mesa.GetNode<Carta>(Mesa.CenterPath + "Oferta/Content/Carta")._GuiInput(new InputEventKey { Pressed = true, Keycode = Key.Enter });
+        Check(session.LastKind == ActionKind.ChooseOffer, "Enter sobre la oferta envia la eleccion a la autoridad.");
+        session.Accept(session.View with { Revision = 2, OfferTiming = session.View.OfferTiming! with {
+            Reservations = new[] { new CardReservationDto(1, 20000) } } });
+        Check(_mesa.LocalDraftCount == 1 && Claim().Visible && !Choose().Visible && Timer().Text.Contains("20 s"),
+            "La confirmacion de reserva conserva borradores y muestra veinte segundos.");
+        DraftCard(0, 4)._DropData(new Vector2(100, 0), CardDragData.Create(session.View, 5, CardDragOrigin.External));
+        Claim().EmitSignal(Button.SignalName.Pressed);
+        Check(session.LastKind == ActionKind.Claim && session.LastPlays!.Single().Cards.Contains(5),
+            "Confirmar despues de elegir envia el juego con la carta ofrecida.");
+        session.Accept(session.View with { Revision = 3 });
+        SnapshotDto finished = session.View with { Revision = 4, Window = 2, Phase = GamePhase.Finished,
+            Result = MatchResult.Draw, CurrentPlayerId = null, OfferedCard = null, OfferTiming = null,
+            DiscardTop = 5, DiscardCount = 1, Rematch = new RematchDto(new[] { 1, 2 }, Array.Empty<int>(), 15000, false),
+            Players = session.View.Players.Select(p => p with { Eliminated = true }).ToArray() };
+        session.Publish(finished);
+        Button rematch = _mesa.GetNode<Button>(Mesa.ContentPath + "TopBar/RematchButton");
+        Label countdown = _mesa.GetNode<Label>(Mesa.ContentPath + "TopBar/RematchCountdownLabel");
+        Check(rematch.Visible && !rematch.Disabled && rematch.Text.Contains("0/2") && countdown.Text.Contains("15 s"),
+            "Al finalizar incluso los eliminados pueden apuntarse y ven el contador.");
+        rematch.EmitSignal(Button.SignalName.Pressed);
+        Check(session.LastKind == ActionKind.JoinRematch, "El boton multijugador envia una confirmacion individual.");
+        session.Accept(finished with { Revision = 5, Rematch = finished.Rematch! with { ReadyPlayerIds = new[] { 1 } } });
+        Check(rematch.Text.Contains("1/2") && rematch.Disabled, "La respuesta actualiza 1/2 y evita doble confirmacion.");
+        session.Publish(finished with { Revision = 6, Rematch = finished.Rematch! with { ReadyPlayerIds = new[] { 1, 2 } } });
+        Check(rematch.Text.Contains("2/2"), "La mesa actualiza el contador completo.");
+        session.Close();
+        Check(!rematch.Visible && !countdown.Visible, "Cerrar la sala retira la revancha y su reloj.");
+        _mesa.Unbind();
+    }
+
+    private sealed class CountdownPreviewSession : IGameSession
+    {
+        public SnapshotDto View { get; private set; }
+        SnapshotDto? IGameSession.View => IsActive ? View : null;
+        public bool IsActive { get; private set; } = true;
+        public bool IsLocal => false;
+        public bool CanManageMatch => true;
+        public string Status => "Diagnostico de controles";
+        public event Action<SnapshotDto>? ViewChanged;
+        public event Action<ReplyDto>? ActionCompleted;
+        public event Action? SessionChanged;
+        public ActionKind LastKind;
+        public PlayDto[]? LastPlays;
+        private long _request;
+        public CountdownPreviewSession(SnapshotDto view) => View = view;
+        public long Submit(ActionKind kind, int? cardId = null, PlayDto[]? plays = null,
+            bool declareWin = false, InitialVictoryKind? initialKind = null, int[]? cards = null, int? sourceMeldId = null)
+        { LastKind = kind; LastPlays = plays; return ++_request; }
+        public void Publish(SnapshotDto view) { View = view; ViewChanged?.Invoke(view); }
+        public void Accept(SnapshotDto view) { Publish(view); ActionCompleted?.Invoke(new(_request, true, "Aceptado", false, view.Revision)); }
+        public void Close(string reason = "Cerrado") { IsActive = false; SessionChanged?.Invoke(); }
+    }
+
+    private void CheckPublishedTransfers()
+    {
+        SnapshotDto view = Fixture() with { Phase = GamePhase.AwaitingClaims, OwnHand = new[] { 0, 1, 17, 24, 23 },
+            Melds = new[] { new MeldDto(70, 1, new[] { 13, 14, 15, 16 }) }, OfferedCard = 26, DeckCount = 33,
+            Players = new[] { new PublicPlayerDto(1, "Ana", 0, 5, true, false), new PublicPlayerDto(2, "Luis", 1, 9, true, false) } };
+        Show(view);
+        Carta OwnCard(int id) => CardsUnder(_mesa.GetNode<Control>(Mesa.OwnGamesPath)).Single(c => c.FaceCardId == id);
+        Check(OwnCard(13).Interactive && !OwnCard(14).Interactive && OwnCard(16).Interactive,
+            "Los extremos de A234 pueden trasmocharse; el 2 interior no.");
+        Variant token = OwnCard(13).DragDataRequested!.Invoke();
+        Check(CardDragData.TryRead(token, view, out LocalCardDrag drag) && drag.Origin == CardDragOrigin.Published && drag.GroupIndex == 70,
+            "Una carta propia publicada crea un token con la identidad real del origen.");
+        var zone = _mesa.GetNode<CardDropZone>(Mesa.InteractionPath + "DraftZone");
+        Check(zone._CanDropData(Vector2.Zero, token), "El destino de juego nuevo acepta el As publicado.");
+        Gesture(() => zone._DropData(Vector2.Zero, token), "Preparar traslado no modifica el snapshot.");
+        Equal(DraftIds(0), new[] { 14, 15, 16 }, "Origen preparado deja 234.");
+        Equal(DraftIds(1), new[] { 13 }, "El As retirado prepara un destino independiente.");
+        Gesture(() => DraftCard(1, 13)._DropData(new Vector2(100, 0), CardDragData.Create(view, 0, CardDragOrigin.Hand)),
+            "Anadir As privado conserva la mano real.");
+        Gesture(() => DraftCard(1, 0)._DropData(new Vector2(100, 0), CardDragData.Create(view, 26, CardDragOrigin.External)),
+            "Anadir As ofrecido conserva la oferta real.");
+        Equal(DraftIds(1), new[] { 13, 0, 26 }, "Destino final es la tercia de Ases ordenada.");
+        Check(!OwnCard(13).Interactive && !_mesa.GetNode<CardDropZone>(Mesa.InteractionPath + "DraftZone")
+            ._CanDropData(Vector2.Zero, CardDragData.Create(view, 14, CardDragOrigin.Published, 70)),
+            "No se traslada dos veces el As ni se rompe el origen restante de tres cartas.");
+        Button cancel = _mesa.GetNode<VBoxContainer>(DraftPath).GetChild(1).GetChild(0).GetChildren().OfType<Button>().Single();
+        Gesture(() => cancel.EmitSignal(Button.SignalName.Pressed), "Cancelar destino conserva la mesa real.");
+        Check(_mesa.LocalDraftCount == 0 && OwnCard(13).Interactive, "Cancelar restaura los dos borradores vinculados.");
+        KeySelect(0);
+        Gesture(() => _mesa.GetNode<CheckButton>(Mesa.InteractionPath + "LocalActions/ExternalSelect")
+            .EmitSignal(BaseButton.SignalName.Toggled, true), "Seleccionar oferta para trasmoche conserva el estado.");
+        Gesture(() => OwnCard(13)._GuiInput(new InputEventKey { Pressed = true, Keycode = Key.Enter }),
+            "Enter sobre el As publicado prepara el traslado sin depender de un area vacia de mesa.");
+        Equal(DraftIds(1), new[] { 13, 0, 26 }, "Seleccionar As privado y oferta antes de pulsar el publicado prepara la tercia completa.");
+        Check(!CardDragData.TryRead(CardDragData.Create(view, 13, CardDragOrigin.Published, 71), view, out _),
+            "Un token no puede inventar el origen publicado.");
+        Check(!CardDragData.TryRead(token, view with { Melds = new[] { view.Melds[0] with { OwnerId = 2 } } }, out _),
+            "Un token publicado no permite retirar cartas de un rival.");
+    }
+
     private void CheckDragTokens(SnapshotDto view)
     {
         Variant valid = CardDragData.Create(view, 2, CardDragOrigin.Hand);
@@ -312,7 +421,7 @@ public partial class MesaInteractionSmoke : Main
         Reject("revision", view.Revision + 1, "Se rechaza un token de otra revision.");
         Reject("window", view.Window + 1, "Se rechaza un token de otra ventana.");
         Reject("origin", 0, "Se rechaza un origen por debajo del rango.");
-        Reject("origin", 4, "Se rechaza un origen por encima del rango.");
+        Reject("origin", 5, "Se rechaza un origen por encima del rango.");
         Reject("group", 0, "Un token de mano no puede indicar un grupo.");
         Reject("card", -1, "Se rechaza una carta negativa en el token.");
         Reject("card", 52, "Se rechaza una carta fuera de la baraja en el token.");

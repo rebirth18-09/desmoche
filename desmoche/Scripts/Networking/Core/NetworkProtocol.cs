@@ -12,16 +12,23 @@ public enum ActionKind
 {
     StartMatch, ExchangeCard, FinishInitial, DeclareInitial, DrawDeck,
     DrawDiscard, Claim, Pass, Publish, Transfer, DeclareDesmoche, Pay,
-    CompleteWithoutPayment, PrepareNextMatch, SayPasa
+    CompleteWithoutPayment, PrepareNextMatch, SayPasa, ChooseOffer, ChooseDiscard, JoinRematch, UpdateSettings
 }
-public sealed record OrderChallengeDto(int PlayerId, long Id, int RemainingMilliseconds);
+public sealed record CardReservationDto(int PlayerId, int RemainingMilliseconds);
+public sealed record OfferTimingDto(int CardId, int RemainingSelectionMilliseconds,
+    CardReservationDto[] Reservations, bool FromDiscard);
+public sealed record DiscardTimingDto(int PlayerId, int CardId, int RemainingMilliseconds);
+public sealed record RematchDto(int[] EligiblePlayerIds, int[] ReadyPlayerIds,
+    int RemainingMilliseconds, bool Closed);
+public sealed record OrderChallengeDto(int PlayerId, long Id, int RemainingMilliseconds,
+    PasaReason Reason = PasaReason.SetOrder, int? MeldId = null);
 public sealed record InitialVictoryDto(InitialVictoryKind Kind, int[] Cards);
 public sealed record AdmissionDto(int Version, string Session, int RecipientId);
 public sealed record PlayDto(int[] Cards, int? MeldId = null);
 public sealed record CommandDto(int Version, string Session, long RequestId,
     long Window, ActionKind Kind, int? CardId = null, int? SourceMeldId = null,
     InitialVictoryKind? InitialKind = null, bool DeclareWin = false,
-    int[]? Cards = null, PlayDto[]? Plays = null);
+    int[]? Cards = null, PlayDto[]? Plays = null, MatchSettings? Settings = null);
 public sealed record ReplyDto(long RequestId, bool Success, string Message,
     bool Penalized, long Revision);
 public sealed record PublicPlayerDto(int Id, string Name, int SeatIndex,
@@ -34,12 +41,14 @@ public sealed record SnapshotDto(int Version, string Session, long Revision,
     PublicPlayerDto[] Players, int[] OwnHand, MeldDto[] Melds,
     int DeckCount, int DiscardCount, int? DiscardTop, int? OfferedCard,
     RevealedHandDto[] RevealedHands, bool OwnResponseSubmitted, int ExchangeCount = 0,
-    OrderChallengeDto? OrderChallenge = null, bool OpeningOffer = false, InitialVictoryDto? InitialVictory = null);
+    OrderChallengeDto? OrderChallenge = null, bool OpeningOffer = false, InitialVictoryDto? InitialVictory = null,
+    OfferTimingDto? OfferTiming = null, DiscardTimingDto? DiscardTiming = null,
+    RematchDto? Rematch = null, bool OwnSpectating = false, bool MustDrawDeck = false, int[]? FinalDeck = null, MatchSettings? Settings = null);
 
 // Contrato de transporte explicito: nunca serializar GameState ni Player.
 public static class NetworkProtocol
 {
-    public const int Version = 4;
+    public const int Version = 8;
     public const int Port = 7000;
     public const int MaxCommandBytes = 8192;
     public const int MaxSnapshotBytes = 32768;
@@ -92,6 +101,7 @@ public static class NetworkProtocol
         if (c.Version != Version || c.Session is null || c.Session.Length != 32 ||
             c.RequestId <= 0 || c.Window <= 0 || !Enum.IsDefined(c.Kind) ||
             c.InitialKind is InitialVictoryKind k && !Enum.IsDefined(k)) return false;
+        if (c.Kind == ActionKind.UpdateSettings ? c.Settings is null || !c.Settings.IsValid() : c.Settings is not null) return false;
         bool card = c.Kind is ActionKind.ExchangeCard or ActionKind.Transfer or ActionKind.Pay;
         bool source = c.Kind == ActionKind.Transfer;
         bool initial = c.Kind is ActionKind.DeclareInitial or ActionKind.Claim;

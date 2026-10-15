@@ -24,6 +24,9 @@ internal static class Program
             InvalidData();
             _checks += ActionInteractionTests.Run();
             _checks += IncrementalDraftTests.Run();
+            _checks += PublishedTransferTests.Run();
+            _checks += InitialDealTests.Run();
+            _checks += HandSelectionHintTests.Run();
             Console.WriteLine($"PRUEBAS INTERACCION COMPLETADAS: {_checks} comprobaciones correctas.");
             return 0;
         }

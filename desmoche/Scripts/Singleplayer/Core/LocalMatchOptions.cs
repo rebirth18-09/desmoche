@@ -1,14 +1,16 @@
 using System;
 using Desmoche.Networking.Core;
+using Desmoche.Domain;
 
 namespace Desmoche.Singleplayer.Core;
 
 public enum BotDifficulty { Easy, Medium, Hard, Expert }
 
-public sealed record LocalMatchOptions(string PlayerName, int BotCount, BotDifficulty Difficulty)
+public sealed record LocalMatchOptions(string PlayerName, int BotCount, BotDifficulty Difficulty, MatchSettings? Settings = null)
 {
     public void Validate()
     {
+        (Settings ?? MatchSettings.Default).Validate();
         if (!NetworkProtocol.ValidName(PlayerName))
             throw new ArgumentException("Escribe un nombre de 1 a 24 caracteres.", nameof(PlayerName));
         if (BotCount is < 1 or > 3)

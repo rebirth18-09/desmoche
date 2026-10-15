@@ -20,7 +20,7 @@ public static class InitialHandPresentation
     }
 
     public static (InitialVictoryKind Kind, int[] Cards)? FindOrderedVictory(
-        IReadOnlyList<int> order, bool allowCuarta)
+        IReadOnlyList<int> order, bool allowCuarta, MatchSettings? settings = null)
     {
         if (order.Count != GameState.InitialHandSize || order.Any(c => c is < 0 or > 51) ||
             order.Distinct().Count() != order.Count) return null;
@@ -29,7 +29,7 @@ public static class InitialHandPresentation
         {
             Card[] cards = order.Skip(i).Take(4).Select(Card.FromId).ToArray();
             foreach (InitialVictoryKind kind in CombinationKinds)
-                if ((allowCuarta || kind != InitialVictoryKind.Cuarta) &&
+                if ((settings ?? MatchSettings.Default).Allows(kind) && (allowCuarta || kind != InitialVictoryKind.Cuarta) &&
                     RulesValidator.HasAlternatingSetOrder(cards) &&
                     RulesValidator.ValidateInitialVictory(hand, kind, cards).IsValid)
                     return (kind, cards.Select(c => c.Id).ToArray());

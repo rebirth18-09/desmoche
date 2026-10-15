@@ -22,6 +22,9 @@ public sealed class GameState
 	public IReadOnlyList<Meld> Melds { get; }
 	public Card? OfferedCard { get; }
 	public int DeckCount => _deck.Count;
+	// Solo la autoridad solicita esta copia al cerrar la partida.
+	internal IReadOnlyList<Card> RemainingDeckInDrawOrder =>
+		Array.AsReadOnly(_deck.CardsForValidation.Reverse().ToArray());
 	public int DiscardCount => _discardPile.Count;
 	public Card? DiscardTop => _discardPile.Top;
 	public bool InitialHandsDealt { get; }
@@ -168,31 +171,43 @@ public sealed class GameState
 		var melds = _melds.ToList();
 		var seenCards = new HashSet<int>();
 		var seenMelds = new HashSet<int>();
+		var oldById = new Dictionary<int, Meld>();
+		var allIds = plays.SelectMany(p => p.CardIds).ToHashSet();
+		foreach (MeldPlay play in plays.Where(p => p.MeldId is not null))
+		{
+			int id = play.MeldId!.Value;
+			Meld old = _melds.FirstOrDefault(m => m.Id == id && m.OwnerPlayerId == playerId)
+				?? throw new InvalidOperationException("Juego ajeno o inexistente.");
+			if (!seenMelds.Add(id))
+				throw new InvalidOperationException("Juego repetido en la solicitud.");
+			Card[] retained = old.Cards.Where(c => play.CardIds.Contains(c.Id)).ToArray();
+			if (retained.Length != old.Cards.Count && !RulesValidator.ValidateMeld(retained).IsValid)
+				throw new InvalidOperationException("El donante debe conservar al menos tres cartas y un juego valido.");
+			if (old.Cards.Any(c => !allIds.Contains(c.Id)))
+				throw new InvalidOperationException("Toda carta retirada debe usarse en otro juego de la misma solicitud.");
+			oldById.Add(id, old);
+		}
+		// Las cartas publicadas solo estan disponibles si su origen actualizado
+		// forma parte de esta misma transaccion, sin estados intermedios visibles.
+		var available = hand.Cards.Concat(oldById.Values.SelectMany(m => m.Cards))
+			.ToDictionary(c => c.Id);
 		int nextId = _nextMeldId;
 		foreach (MeldPlay play in plays)
 		{
 			Meld? old = null;
 			if (play.MeldId is int existingId)
 			{
-				old = _melds.FirstOrDefault(m => m.Id == existingId && m.OwnerPlayerId == playerId)
-					?? throw new InvalidOperationException("Juego ajeno o inexistente.");
-				if (!seenMelds.Add(existingId) || old.Cards.Any(c => !play.CardIds.Contains(c.Id)))
-					throw new InvalidOperationException("Una extension conserva el juego anterior.");
+				old = oldById[existingId];
 			}
 			var cards = new List<Card>();
 			foreach (int id in play.CardIds)
 			{
 				if (!seenCards.Add(id))
 					throw new InvalidOperationException("Carta repetida entre juegos.");
-				Card? previous = old?.Cards.FirstOrDefault(c => c.Id == id);
-				if (previous is not null) cards.Add(previous);
-				else
-				{
-					Card card = hand.Cards.FirstOrDefault(c => c.Id == id)
-						?? throw new InvalidOperationException("Carta ajena al jugador.");
-					cards.Add(card);
-					hand = hand.Remove(id);
-				}
+				if (!available.TryGetValue(id, out Card? card))
+					throw new InvalidOperationException("Carta ajena al jugador.");
+				cards.Add(card);
+				if (hand.Contains(id)) hand = hand.Remove(id);
 			}
 			var updated = new Meld(old?.Id ?? nextId++, playerId, cards);
 			if (old is null) melds.Add(updated);

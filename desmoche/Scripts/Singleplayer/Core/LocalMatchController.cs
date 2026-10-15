@@ -19,6 +19,7 @@ public sealed class LocalMatchController
     private long _nextBotAt;
     private int _nextBotIndex;
     private long _lastClock;
+    private readonly int _initialBotDelayMilliseconds;
     public LocalMatchOptions Options { get; }
     public SnapshotDto View => Copy(_view);
     public bool IsActive { get; private set; } = true;
@@ -32,16 +33,17 @@ public sealed class LocalMatchController
     public bool MustDrawDeck { get; private set; }
     public BotPublicContext PublicContext => new(OpeningOffer, MustDrawDeck);
 
-    public LocalMatchController(LocalMatchOptions options, int? seed = null)
+    public LocalMatchController(LocalMatchOptions options, int? seed = null, int initialBotDelayMilliseconds = 0)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         Options = options with { PlayerName = options.PlayerName.Trim() };
+        _initialBotDelayMilliseconds = Math.Max(0, initialBotDelayMilliseconds);
         // La semilla de pruebas llega solo a la autoridad. Las estrategias usan
         // semillas independientes: no pueden reconstruir el barajado.
         Random? deckRandom = seed is int value ? new Random(value) : null;
         _authority = new ServerSession(Options.PlayerName,
-            deckRandom is null ? null : () => Deck.CreateStandard().Shuffle(deckRandom));
+            deckRandom is null ? null : () => Deck.CreateStandard().Shuffle(deckRandom), settings: Options.Settings);
         string[] names = { "Bot Alba", "Bot Bruno", "Bot Cora" };
         for (int index = 0; index < Options.BotCount; index++)
         {
@@ -54,7 +56,7 @@ public sealed class LocalMatchController
         _view = _authority.ViewFor(1);
         ReplyDto started = Send(1, new BotAction(ActionKind.StartMatch).ToCommand(_view, 1), 0);
         if (!started.Success) throw new InvalidOperationException(started.Message);
-        _nextBotAt = BotDelayMilliseconds;
+        _nextBotAt = Math.Max(BotDelayMilliseconds, _initialBotDelayMilliseconds);
     }
 
     public ReplyDto Submit(CommandDto command, long nowMilliseconds)
@@ -73,7 +75,13 @@ public sealed class LocalMatchController
         long now = Clock(nowMilliseconds);
         if (_authority.Tick(now))
         {
+            SnapshotDto before = _view;
             _view = _authority.ViewFor(1);
+            ActionKind timedAction = before.Phase == GamePhase.AwaitingDraw &&
+                _view.Phase == GamePhase.AwaitingClaims ? ActionKind.DrawDeck : ActionKind.Pass;
+            UpdatePublicContext(before, _view, new BotAction(timedAction).ToCommand(before, 1),
+                new ReplyDto(0, true, "", false, _view.Revision));
+            foreach (var pair in _bots) pair.Value.Observe(_authority.ViewFor(pair.Key));
             if (_view.Phase == GamePhase.Finished) Status = "Partida local terminada.";
             return true;
         }
@@ -113,7 +121,7 @@ public sealed class LocalMatchController
         ReplyDto started = Submit(new BotAction(ActionKind.StartMatch)
             .ToCommand(_authority.ViewFor(1), NextHumanRequestId), now);
         if (!started.Success) throw new InvalidOperationException(started.Message);
-        _nextBotAt = now + Math.Max(0, BotDelayMilliseconds);
+        _nextBotAt = now + Math.Max(Math.Max(0, BotDelayMilliseconds), _initialBotDelayMilliseconds);
     }
 
     public void Close()
@@ -131,7 +139,8 @@ public sealed class LocalMatchController
         foreach ((int id, BotBrain brain) in _bots) brain.Observe(_authority.ViewFor(id));
         // Una respuesta privada de otro jugador no cambia el estado presentado.
         // Conservamos la revisión expuesta para no cancelar un arrastre o borrador.
-        bool changed = NetworkProtocol.Encode(_view with { Revision = after.Revision }) != NetworkProtocol.Encode(after);
+        bool changed = NetworkProtocol.Encode(WithoutClock(_view) with { Revision = after.Revision }) !=
+            NetworkProtocol.Encode(WithoutClock(after));
         if (changed)
         {
             _view = after;
@@ -150,7 +159,8 @@ public sealed class LocalMatchController
         }
         if (before.Phase == GamePhase.InitialDeclarations && after.Phase == GamePhase.AwaitingDraw)
             _firstDrawPending = true;
-        if (OpeningOffer && (after.Phase != GamePhase.AwaitingClaims || before.OfferedCard != after.OfferedCard))
+        bool pausedOffer = after.Phase == GamePhase.AwaitingOrderChallenge && after.OrderChallenge?.Reason == PasaReason.UnusedOffer;
+        if (OpeningOffer && (!pausedOffer && after.Phase != GamePhase.AwaitingClaims || before.OfferedCard != after.OfferedCard))
         {
             MustDrawDeck = after.Phase == GamePhase.AwaitingDraw && after.DiscardTop == before.OfferedCard;
             OpeningOffer = false;
@@ -174,6 +184,18 @@ public sealed class LocalMatchController
     {
         Players = view.Players.ToArray(), OwnHand = view.OwnHand.ToArray(),
         Melds = view.Melds.Select(m => m with { Cards = m.Cards.ToArray() }).ToArray(),
-        RevealedHands = view.RevealedHands.Select(h => h with { Cards = h.Cards.ToArray() }).ToArray()
+        RevealedHands = view.RevealedHands.Select(h => h with { Cards = h.Cards.ToArray() }).ToArray(),
+        OfferTiming = StateProjection.CopyOfferTiming(view.OfferTiming),
+        Rematch = StateProjection.CopyRematch(view.Rematch),
+        InitialVictory = StateProjection.CopyInitial(view.InitialVictory),
+        FinalDeck = view.FinalDeck?.ToArray()
+    };
+
+    private static SnapshotDto WithoutClock(SnapshotDto view) => view with
+    {
+        OfferTiming = view.OfferTiming is not { } offer ? null : offer with
+        { RemainingSelectionMilliseconds = 0, Reservations = offer.Reservations
+            .Select(r => r with { RemainingMilliseconds = 0 }).ToArray() },
+        DiscardTiming = view.DiscardTiming is not { } discard ? null : discard with { RemainingMilliseconds = 0 }
     };
 }

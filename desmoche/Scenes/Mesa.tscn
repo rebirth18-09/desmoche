@@ -77,15 +77,18 @@ texture = ExtResource("3_table")
 expand_mode = 1
 stretch_mode = 0
 
-[node name="TopBar" type="HBoxContainer" parent="Scroll/Padding/Content"]
+[node name="TopBar" type="HFlowContainer" parent="Scroll/Padding/Content"]
 layout_mode = 0
 offset_left = 0.0
 offset_top = 802.0
 offset_right = 2016.0
 offset_bottom = 838.0
-theme_override_constants/separation = 16
+theme_override_constants/h_separation = 12
+theme_override_constants/v_separation = 8
+alignment = 2
 
 [node name="TitleLabel" type="Label" parent="Scroll/Padding/Content/TopBar"]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_font_sizes/font_size = 18
@@ -94,7 +97,7 @@ text = "DESMOCHE"
 
 [node name="LeaveButton" type="Button" parent="Scroll/Padding/Content/TopBar"]
 layout_mode = 2
-custom_minimum_size = Vector2(120, 32)
+custom_minimum_size = Vector2(120, 44)
 theme_override_font_sizes/font_size = 14
 text = "Salir de sala"
 
@@ -523,10 +526,10 @@ text = "Suelta aqui una carta de la seleccion para preparar el juego. Las cartas
 theme_override_font_sizes/font_size = 12
 autowrap_mode = 3
 
-[node name="Rows" type="VBoxContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/DraftZone/Content"]
+[node name="Rows" type="Control" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction/DraftZone/Content"]
 layout_mode = 2
+size_flags_horizontal = 3
 mouse_filter = 1
-theme_override_constants/separation = 10
 
 [node name="NetworkActions" type="HFlowContainer" parent="Scroll/Padding/Content/HandZone/Padding/Content/Interaction"]
 layout_mode = 2
